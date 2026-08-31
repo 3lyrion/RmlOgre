@@ -66,8 +66,6 @@ class Workspace : public Ogre::TextureGpuListener
 {
 	static const std::size_t NUM_NODE_TYPES = std::variant_size_v<Pass>;
 
-    bool m_enabled = true;
-
 	std::array<NodeType, NUM_NODE_TYPES> nodeTypes;
 
 	Ogre::Matrix4 projectionMatrix_ = Ogre::Matrix4::IDENTITY;
@@ -135,8 +133,6 @@ public:
 		Ogre::TextureGpuListener::Reason reason,
 		void* extraData
 	) override;
-
-    void setEnabled(bool enabled);
 };
 
 }

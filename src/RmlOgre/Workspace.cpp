@@ -244,7 +244,7 @@ void Workspace::buildWorkspace(const std::array<std::size_t, NUM_NODE_TYPES>& re
 		externalTextures,
 		this->camera,
 		this->workspaceDef->getName(),
-		m_enabled);
+		true);
 
 	for(std::size_t i = 0; i < nodeTypeNames.size(); ++i)
 	{
@@ -550,12 +550,4 @@ void Workspace::notifyTextureChanged(
 		this->output(nullptr);
 	if(texture == this->background_ && reason == Ogre::TextureGpuListener::Reason::Deleted)
 		this->background(nullptr);
-}
-
-void Workspace::setEnabled(bool enabled)
-{
-    m_enabled = enabled;
-
-    if (workspace)
-        workspace->setEnabled(enabled);
 }

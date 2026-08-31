@@ -16,7 +16,6 @@
 #include <OgrePixelFormatGpuUtils.h>
 #include <OgreRenderQueue.h>
 #include <OgreRoot.h>
-#include <OgreTechnique.h>
 #include <OgreTextureFilters.h>
 #include <OgreTextureGpuManager.h>
 #include <Vao/OgreVaoManager.h>
@@ -168,16 +167,6 @@ void RenderInterface::releaseLayerBuffer(Layer layer)
 	--this->numActiveLayers;
 }
 
-void RenderInterface::OnTextureChanged(Rml::TextureHandle texture)
-{
-    auto& material = materials.at(texture);
-	material.calculateHlmsHash();
-}
-
-void RenderInterface::SetEnabled(bool enabled)
-{
-    workspace.setEnabled(enabled);
-}
 
 void RenderInterface::BeginFrame()
 {
@@ -252,42 +241,6 @@ void RenderInterface::RenderGeometry(
 void RenderInterface::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
 {
 	this->releaseGeometries.push_back(geometry);
-}
-
-
-Rml::TextureHandle RenderInterface::RegisterExternalTexture(Ogre::TextureGpu* texture)
-{
-    auto name  = texture->getName();
-    auto hash  = name.mHash;
-    auto entry = materialHandleByExternalTextureName.find(hash);
-    if (entry != materialHandleByExternalTextureName.end())
-        return entry->second;
-
-	Ogre::String id = this->workspace.getNameStr();
-	id.append("_Texture_");
-	id.append(std::to_string(this->datablockId++));
-	auto* datablock = static_cast<Ogre::HlmsUnlitDatablock*>(
-		this->hlms->createDatablock(id, id, this->macroblock, this->blendblock, Ogre::HlmsParamVec()));
-	datablock->setTexture(0, texture, &this->samplerblock);
-	datablock->setUseColour(true);
-
-	auto material = Material{nullptr, datablock};
-	material.calculateHlmsHash();
-	auto handle = this->materials.insert(std::move(material));
-    materialHandleByExternalTextureName[hash] = handle;
-    return handle;
-}
-
-void RenderInterface::UnregisterExternalTexture(Ogre::TextureGpu* texture)
-{
-    auto name  = texture->getName();
-    auto hash  = name.mHash;
-    auto entry = materialHandleByExternalTextureName.find(hash);
-    if (entry == materialHandleByExternalTextureName.end())
-        return;
-
-    materials.erase(entry->second);
-    materialHandleByExternalTextureName.erase(entry);
 }
 
 
@@ -694,26 +647,6 @@ void RenderInterface::RenderShader(
 	auto& material = this->shaders.at(shader);
 	if(material.needsHashing())
 		material.calculateHlmsHash();
-
-    if (texture)
-    {
-        auto& texMaterial = this->materials.at(texture);
-        if (texMaterial.datablock)
-        {
-            auto* unlitBlock = static_cast<Ogre::HlmsUnlitDatablock*>(texMaterial.datablock);
-            auto* texGpu = unlitBlock->getTexture(0);
-
-            auto& mat = material.material;
-            if (mat->getNumTechniques() > 0)
-            {
-                auto* pass = mat->getTechnique(0)->getPass(0);
-                if (pass->getNumTextureUnitStates() == 0)
-                    pass->createTextureUnitState();
-                
-                pass->getTextureUnitState(0)->setTexture(texGpu);
-            }
-        }
-    }
 
 	std::vector<QueuedGeometry>* queue = nullptr;
 	if(this->renderPassSettings.enableStencil)

@@ -57,8 +57,6 @@ class RenderInterface : public Rml::RenderInterface
 	std::unordered_map<Rml::String, std::unique_ptr<ShaderMaker>> shaderMakers;
 	ObjectIndex<Material> shaders;
 
-    std::unordered_map<uint32_t, size_t> materialHandleByExternalTextureName;
-
 	RenderPassSettings renderPassSettings;
 	int connectionId = 0;
 	std::vector<Layer> layerBuffers;
@@ -119,8 +117,6 @@ public:
 	Ogre::TextureGpu* GetBackground() const       { return this->workspace.background(); }
 	void SetBackground(Ogre::TextureGpu* texture) { this->workspace.background(texture); }
 
-    void OnTextureChanged(Rml::TextureHandle texture);
-    void SetEnabled(bool enabled);
 
 	void BeginFrame();
 	void EndFrame();
@@ -135,9 +131,6 @@ public:
 		Rml::TextureHandle texture
 	) override;
 	void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) override;
-
-    Rml::TextureHandle RegisterExternalTexture(Ogre::TextureGpu* texture);
-    void UnregisterExternalTexture(Ogre::TextureGpu* texture);
 
 	Rml::TextureHandle LoadTexture(
 		Rml::Vector2i& texture_dimensions,
