@@ -13,6 +13,8 @@
 
 #include <RmlUi/Core/RenderInterface.h>
 
+#include <Compositor/Pass/OgreCompositorPass.h>
+
 
 namespace Ogre {
 
@@ -20,6 +22,7 @@ class HlmsUnlit;
 class HlmsUnlitDatablock;
 class SceneManager;
 class TextureGpu;
+class CompositorPassDef;
 
 }
 
@@ -42,9 +45,31 @@ struct Layer
 	}
 };
 
+enum class CmdType : uint8_t
+{
+    DrawGeometry,
+    SetScissor,
+    EnabledClipMask,
+    SetClipMaskOperation
+};
+
+struct Command
+{
+    CmdType                     type;
+    bool                        stateEnabled    = false;
+    uint32_t                    stencilRefValue = 0;
+    Ogre::HlmsMacroblock const* macroblock      = nullptr;
+    Ogre::VertexArrayObject*    vao             = nullptr;
+    Ogre::HlmsDatablock*        datablock       = nullptr;
+    Ogre::Matrix4               transform       = Ogre::Matrix4::IDENTITY;
+};
+
+using CommandQueue = std::vector<Command>;
+
 class RenderInterface : public Rml::RenderInterface
 {
 	Ogre::HlmsUnlit* hlms = nullptr;
+    CommandQueue m_commandQueue;
 	Ogre::HlmsMacroblock macroblock;
 	Ogre::HlmsBlendblock blendblock;
 	Ogre::HlmsSamplerblock samplerblock;
@@ -108,6 +133,7 @@ public:
 	void addPass(Pass&& pass);
 	void releaseRenderTexture(Ogre::TextureGpu* texture);
 
+    CommandQueue const& getCommandQueue() const { return m_commandQueue; }
 
 	void AddFilterMaker(Rml::String name, std::unique_ptr<FilterMaker> filterMaker);
 	void AddShaderMaker(Rml::String name, std::unique_ptr<ShaderMaker> shaderMaker);
@@ -183,6 +209,17 @@ public:
 		Rml::TextureHandle texture
 	) override;
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
+};
+
+class CompositorPassMain : public Ogre::CompositorPass
+{
+public:
+    CompositorPassMain(Ogre::CompositorPassDef const* definition, Ogre::CompositorNode* parentNode, RenderInterface* renderInterface);
+
+    void execute(Ogre::Camera const* lodCamera) final;
+
+private:
+    RenderInterface* m_renderInterface = nullptr;
 };
 
 }

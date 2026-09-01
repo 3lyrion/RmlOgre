@@ -9,6 +9,7 @@
 #include <Compositor/OgreCompositorNode.h>
 #include <Compositor/OgreCompositorWorkspace.h>
 #include <Compositor/OgreCompositorNodeDef.h>
+#include <Compositor/OgreCompositorPassDef.h>
 #include <Hlms/Unlit/OgreHlmsUnlit.h>
 #include <Hlms/Unlit/OgreHlmsUnlitDatablock.h>
 #include <OgreCamera.h>
@@ -221,22 +222,18 @@ void RenderInterface::RenderGeometry(
 	Rml::Vector2f translation,
 	Rml::TextureHandle texture)
 {
-	BaseRenderPass* pass = nullptr;
-	if(this->renderPassSettings.enableStencil)
-		pass = &this->getRenderPass<RenderWithStencilPass>();
-	else
-		pass = &this->getRenderPass<RenderPass>();
-
-	auto& material = this->materials.at(texture);
-	if(material.needsHashing())
+	auto& material = materials.at(texture);
+	if (material.needsHashing())
 		material.calculateHlmsHash();
-	pass->queue.push_back({
-		reinterpret_cast<Ogre::VertexArrayObject*>(geometry),
-		translation,
-		material
-	});
-	if(material.textureDependency)
-		pass->textureDependencies.push_back(material.textureDependency);
+
+    auto& command = m_commandQueue.emplace_back();
+    command.type      = CmdType::DrawGeometry;
+    command.vao       = reinterpret_cast<Ogre::VertexArrayObject*>(geometry);
+    command.datablock = static_cast<Ogre::HlmsUnlitDatablock*>(material.datablock);
+
+    auto translationMat = Ogre::Matrix4::IDENTITY;
+    translationMat.setTrans({ translation.x, translation.y, 0 });
+    command.transform = renderPassSettings.transform * translationMat;
 }
 void RenderInterface::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
 {
@@ -663,4 +660,15 @@ void RenderInterface::RenderShader(
 void RenderInterface::ReleaseShader(Rml::CompiledShaderHandle shader)
 {
 	this->shaders.erase(shader);
+}
+
+
+CompositorPassMain::CompositorPassMain(Ogre::CompositorPassDef const* definition, Ogre::CompositorNode* parentNode, RenderInterface* renderInterface) :
+    Ogre::CompositorPass(definition, parentNode),
+    m_renderInterface   (renderInterface)
+{ }
+
+void CompositorPassMain:execute(Ogre::Camera const* lodCamera)
+{
+
 }
