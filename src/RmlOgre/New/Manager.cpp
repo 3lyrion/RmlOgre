@@ -28,6 +28,8 @@ using namespace RmlOgre;
 
 namespace
 {
+    Ogre::TextureGpu* BlankTexture = nullptr;
+
     const Ogre::HlmsCache c_dummyCache( 0, Ogre::HLMS_MAX, Ogre::HLMS_CACHE_FLAGS_NONE, Ogre::HlmsPso() );
 
     class ImguiDummyMO final : public Ogre::MovableObject
@@ -43,17 +45,40 @@ namespace
         // Overrides from MovableObject
         const Ogre::String &getMovableType() const override { return Ogre::BLANKSTRING; }
     };
-}  // namespace Ogre
+
+    void createBlankTexture()
+    {
+        Ogre::TextureGpuManager *textureManager = Ogre::Root::getSingleton().getRenderSystem()->getTextureGpuManager();
+
+        BlankTexture = textureManager->createTexture(
+            "RmlUi/BlankTexture", Ogre::GpuPageOutStrategy::AlwaysKeepSystemRamCopy,
+            Ogre::TextureFlags::ManualTexture, Ogre::TextureTypes::Type2D );
+        
+        BlankTexture->setResolution( 1u, 1u );
+        BlankTexture->setPixelFormat( Ogre::PixelFormatGpu::PFG_RGBA8_UNORM );
+
+        Ogre::Image2 image;
+        image.createEmptyImageLike( BlankTexture );
+        Ogre::TextureBox dstBox = image.getData( 0u );
+    
+        uint32_t whitePixel = 0xFFFFFFFF;
+        memcpy( dstBox.data, &whitePixel, sizeof( uint32_t ) );
+
+        BlankTexture->scheduleTransitionTo( Ogre::GpuResidency::Resident );
+        image.uploadTo( BlankTexture, 0u, 0u );
+    }
+
+}
 
 //-----------------------------------------------------------------------------
 Manager::Manager() :
-    mDrawData( 0 ),
     mIndirectBuffer( 0 ),
     mCommandBuffer( 0 ),
     mDummyMovableObject( 0 )
 {
     mCommandBuffer = new Ogre::CommandBuffer();
     createPrograms();
+    createBlankTexture();
 }
 //-----------------------------------------------------------------------------
 Manager::~Manager()
@@ -69,7 +94,7 @@ void Manager::destroyAllResources()
 {
     Ogre::VaoManager *vaoManager = Ogre::Root::getSingleton().getRenderSystem()->getVaoManager();
 
-    for( Ogre::Renderable *renderable : mScheduledRenderables )
+    for (auto* renderable : mScheduledRenderables)
     {
         renderable->destroyBuffers( vaoManager );
         delete renderable;
@@ -81,7 +106,7 @@ void Manager::destroyAllResources()
 
     while( itor != endt )
     {
-        for( Ogre::Renderable *renderable : itor->second )
+        for (auto* renderable : itor->second)
         {
             renderable->destroyBuffers( vaoManager );
             delete renderable;
@@ -96,8 +121,8 @@ void Manager::destroyAllResources()
 
     if( mIndirectBuffer )
     {
-        if( mIndirectBuffer->getMappingState() != MS_UNMAPPED )
-            mIndirectBuffer->unmap( UO_UNMAP_ALL );
+        if (mIndirectBuffer->getMappingState() != Ogre::MS_UNMAPPED)
+            mIndirectBuffer->unmap(Ogre::UO_UNMAP_ALL);
         vaoManager->destroyIndirectBuffer( mIndirectBuffer );
         mIndirectBuffer = 0;
     }
@@ -106,11 +131,10 @@ void Manager::destroyAllResources()
 }
 //-----------------------------------------------------------------------------
 Ogre::Matrix4 Manager::getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
-                                           const Ogre::Camera* currentCamera ) const
+                                           const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const
 {
-    const ImGuiIO &io = ImGui::GetIO();
-    Ogre::Matrix4 projectionMatrix( 2.0f / io.DisplaySize.x, 0.0f, 0.0f, -1.0f,  //
-                              0.0f, -2.0f / io.DisplaySize.y, 0.0f, 1.0f,  //
+    Ogre::Matrix4 projectionMatrix( 2.0f / vpWidth, 0.0f, 0.0f, -1.0f,  //
+                              0.0f, -2.0f / vpHeight, 0.0f, 1.0f,  //
                               0.0f, 0.0f, -1.0f, 0.0f,                     //
                               0.0f, 0.0f, 0.0f, 1.0f );
     // Still need to take RS depth into account.
@@ -177,8 +201,8 @@ void Manager::createPrograms()
         "#version 150\n"
         "uniform mat4 ProjectionMatrix; \n"
         "in vec2 vertex;\n"
-        "in vec2 uv0;\n"
         "in vec4 colour;\n"
+        "in vec2 uv0;\n"
         "out vec2 Texcoord;\n"
         "out vec4 col;\n"
         "void main()\n"
@@ -204,8 +228,8 @@ void Manager::createPrograms()
         "    uniform mat4 ProjectionMatrix; \n"
         "vulkan( }; )\n"
         "vulkan_layout( OGRE_POSITION ) in vec2 vertex;\n"
-        "vulkan_layout( OGRE_TEXCOORD0 ) in vec2 Texcoord;\n"
         "vulkan_layout( OGRE_DIFFUSE ) in vec4 colour;\n"
+        "vulkan_layout( OGRE_TEXCOORD0 ) in vec2 Texcoord;\n"
         "vulkan_layout( location = 1 )\n"
         "out block\n"
         "{\n"
@@ -241,8 +265,8 @@ void Manager::createPrograms()
         "\n"
         "struct VertexOut {\n"
         "    float4 position [[position]];\n"
-        "    float2 texCoords;\n"
         "    float4 colour;\n"
+        "    float2 texCoords;\n"
         "};\n"
         "\n"
         "fragment float4 main_metal(VertexOut in [[stage_in]],\n"
@@ -264,8 +288,8 @@ void Manager::createPrograms()
         "\n"
         "struct VertexIn {\n"
         "    float2 position  [[attribute(VES_POSITION)]];\n"
-        "    float2 texCoords [[attribute(VES_TEXTURE_COORDINATES0)]];\n"
         "    float4 colour     [[attribute(VES_DIFFUSE)]];\n"
+        "    float2 texCoords [[attribute(VES_TEXTURE_COORDINATES0)]];\n"
         "};\n"
         "\n"
         "struct VertexOut {\n"
@@ -413,15 +437,25 @@ void Manager::createPrograms()
 //-----------------------------------------------------------------------------
 Ogre::MaterialPtr Manager::createMaterialFor( Ogre::TextureGpu* texture )
 {
-    const Ogre::String materialName = "!!OgreImgui_" + texture->getName().getReleaseText();
-    Ogre::MaterialPtr imguiMaterial = Ogre::MaterialManager::getSingleton().create(
+    if( !texture )
+        texture = BlankTexture;
+
+    const Ogre::String materialName = "!!OgreRmlUi_" + texture->getName().getReleaseText();
+    
+    Ogre::MaterialPtr rmlMaterial = Ogre::MaterialManager::getSingleton().getByName(
+        materialName, Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME );
+
+    if( rmlMaterial )
+        return rmlMaterial;
+
+    rmlMaterial = Ogre::MaterialManager::getSingleton().create(
         materialName, Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME );
 
     Ogre::HlmsBlendblock blendblock;
     blendblock.mSourceBlendFactor = Ogre::SBF_SOURCE_ALPHA;
     blendblock.mDestBlendFactor = Ogre::SBF_ONE_MINUS_SOURCE_ALPHA;
-    blendblock.mSourceBlendFactorAlpha = Ogre::SBF_ONE_MINUS_SOURCE_ALPHA;
-    blendblock.mDestBlendFactorAlpha = Ogre::SBF_ZERO;
+    blendblock.mSourceBlendFactorAlpha = Ogre::SBF_ONE;
+    blendblock.mDestBlendFactorAlpha = Ogre::SBF_ONE_MINUS_SOURCE_ALPHA;
     blendblock.mBlendOperation = Ogre::SBO_ADD;
     blendblock.mBlendOperationAlpha = Ogre::SBO_ADD;
     blendblock.mSeparateBlend = true;
@@ -434,7 +468,7 @@ Ogre::MaterialPtr Manager::createMaterialFor( Ogre::TextureGpu* texture )
     macroblock.mDepthWrite = false;
     macroblock.mScissorTestEnabled = true;
 
-    Ogre::Pass *pass = imguiMaterial->getTechnique( 0 )->getPass( 0 );
+    Ogre::Pass *pass = rmlMaterial->getTechnique( 0 )->getPass( 0 );
     pass->setFragmentProgram( "imgui/FP" );
     pass->setVertexProgram( "imgui/VP" );
 
@@ -443,19 +477,19 @@ Ogre::MaterialPtr Manager::createMaterialFor( Ogre::TextureGpu* texture )
 
     pass->createTextureUnitState()->setTexture( texture );
 
-    return imguiMaterial;
+    return rmlMaterial;
 }
 //-----------------------------------------------------------------------------
 Ogre::Renderable *Manager::getAvailableRenderable( Ogre::TextureGpu* texture )
 {
-    Ogre::Renderable *retVal = 0;
+    Renderable *retVal = 0;
 
     RenderableMap::iterator itor = mAvailableRenderables.find( texture );
     if( itor != mAvailableRenderables.end() )
     {
         if( itor->second.empty() )
         {
-            Ogre::Renderable *renderable = new Renderable();
+            auto *renderable = new Renderable();
             renderable->setMaterial( createMaterialFor( texture ) );
             itor->second.push_back( renderable );
         }
@@ -464,7 +498,7 @@ Ogre::Renderable *Manager::getAvailableRenderable( Ogre::TextureGpu* texture )
     }
     else
     {
-        Ogre::Renderable *renderable = new Renderable();
+        auto *renderable = new Renderable();
         renderable->setMaterial( createMaterialFor( texture ) );
         mAvailableRenderables.insert( { texture, {} } );
         retVal = renderable;
@@ -475,261 +509,239 @@ Ogre::Renderable *Manager::getAvailableRenderable( Ogre::TextureGpu* texture )
     return retVal;
 }
 //-----------------------------------------------------------------------------
-void Manager::prepareForRender( Ogre::SceneManager *sceneManager )
-{
-    // Tell ImGui to create the buffers.
-    ImGui::Render();
-
-    const ImDrawData *drawData = ImGui::GetDrawData();
-    mDrawData = drawData;
-
-    for( Ogre::Renderable *renderable : mScheduledRenderables )
-    {
-        Ogre::TextureGpu* texture = renderable->getMaterial()
-                                  ->getTechnique( 0u )
-                                  ->getPass( 0u )
-                                  ->getTextureUnitState( 0u )
-                                  ->_getTexturePtr( 0u );
-        mAvailableRenderables[texture].push_back( renderable );
-    }
-    mScheduledRenderables.clear();
-
-    size_t numNeededDraws = 0u;
-    for( int n = 0; n < drawData->CmdListsCount; n++ )
-    {
-        const ImDrawList *drawList = drawData->CmdLists[n];
-        numNeededDraws += size_t( drawList->CmdBuffer.Size );
-    }
-
-    Ogre::VaoManager *vaoManager = sceneManager->getDestinationRenderSystem()->getVaoManager();
-    if( !mDummyMovableObject )
-    {
-        mDummyMovableObject = OGRE_NEW ImguiDummyMO(
-            Id::generateNewId<Ogre::MovableObject>(),
-            &sceneManager->_getEntityMemoryManager( Ogre::SCENE_STATIC ), sceneManager, 254u );
-        sceneManager->getRootSceneNode( Ogre::SCENE_STATIC )->attachObject( mDummyMovableObject );
-        mDummyMovableObject->setVisible( false );
-        mDummyMovableObject->setCastShadows( false );
-    }
-
-    const bool supportsIndirectBuffers = vaoManager->supportsIndirectBuffers();
-
-    unsigned char *indirectDraw = 0;
-    if( numNeededDraws > 0u )
-    {
-        if( !mIndirectBuffer ||
-            ( numNeededDraws * sizeof( CbDrawIndexed ) ) > mIndirectBuffer->getNumElements() )
-        {
-            if( mIndirectBuffer )
-            {
-                if( mIndirectBuffer->getMappingState() != MS_UNMAPPED )
-                    mIndirectBuffer->unmap( UO_UNMAP_ALL );
-                vaoManager->destroyIndirectBuffer( mIndirectBuffer );
-            }
-            mIndirectBuffer = vaoManager->createIndirectBuffer( numNeededDraws * sizeof( CbDrawIndexed ),
-                                                                BT_DYNAMIC_PERSISTENT, 0, false );
-        }
-
-        if( supportsIndirectBuffers )
-        {
-            indirectDraw = static_cast<unsigned char *>(
-                mIndirectBuffer->map( 0, mIndirectBuffer->getNumElements() ) );
-        }
-        else
-        {
-            indirectDraw = mIndirectBuffer->getSwBufferPtr();
-        }
-    }
-
-    // iterate through all lists (at the moment every window has its own)
-    for( int n = 0; n < drawData->CmdListsCount; n++ )
-    {
-        const ImDrawList *drawList = drawData->CmdLists[n];
-        const ImDrawVert *vtxBuf = drawList->VtxBuffer.Data;
-        const ImDrawIdx *idxBuf = drawList->IdxBuffer.Data;
-
-        unsigned int startIdx = 0;
-
-        for( int i = 0; i < drawList->CmdBuffer.Size; i++ )
-        {
-            const ImDrawCmd *drawCmd = &drawList->CmdBuffer[i];
-
-            Ogre::TextureGpu* texture = reinterpret_cast<Ogre::TextureGpu* >( drawCmd->GetTexID() );
-            Ogre::Renderable *renderable = getAvailableRenderable( texture );
-
-            // update their vertex buffers.
-            renderable->updateVertexData( vtxBuf, &idxBuf[startIdx],
-                                          (unsigned int)drawList->VtxBuffer.Size, drawCmd->ElemCount,
-                                          vaoManager );
-
-            VertexArrayObject *vao = renderable->getVaos( VpNormal ).back();
-
-            CbDrawIndexed *cmd = reinterpret_cast<CbDrawIndexed *>( indirectDraw );
-            indirectDraw += sizeof( CbDrawIndexed );
-            cmd->primCount = vao->getPrimitiveCount();
-            cmd->instanceCount = 1u;
-            cmd->firstVertexIndex =
-                uint32_t( vao->getIndexBuffer()->_getFinalBufferStart() + vao->getPrimitiveStart() );
-            cmd->baseVertex = uint32_t( vao->getBaseVertexBuffer()->_getFinalBufferStart() );
-            cmd->baseInstance = 0u;
-
-            startIdx += drawCmd->ElemCount;
-        }
-    }
-
-    if( indirectDraw && supportsIndirectBuffers )
-        mIndirectBuffer->unmap( UO_KEEP_PERSISTENT );
-
-    // Delete unused renderables, but leaving just one element.
-    RenderableMap::iterator itor = mAvailableRenderables.begin();
-    RenderableMap::iterator endt = mAvailableRenderables.end();
-
-    while( itor != endt )
-    {
-        while( itor->second.size() > 1u )
-        {
-            Ogre::Renderable *renderable = itor->second.back();
-            renderable->destroyBuffers( vaoManager );
-            delete renderable;
-            itor->second.pop_back();
-        }
-        ++itor;
-    }
-}
+//void Manager::prepareForRender( Ogre::SceneManager *sceneManager )
+//{
+//    // Tell ImGui to create the buffers.
+//    ImGui::Render();
+//
+//    const ImDrawData *drawData = ImGui::GetDrawData();
+//    mDrawData = drawData;
+//
+//    for( Ogre::Renderable *renderable : mScheduledRenderables )
+//    {
+//        Ogre::TextureGpu* texture = renderable->getMaterial()
+//                                  ->getTechnique( 0u )
+//                                  ->getPass( 0u )
+//                                  ->getTextureUnitState( 0u )
+//                                  ->_getTexturePtr( 0u );
+//        mAvailableRenderables[texture].push_back( renderable );
+//    }
+//    mScheduledRenderables.clear();
+//
+//    size_t numNeededDraws = 0u;
+//    for( int n = 0; n < drawData->CmdListsCount; n++ )
+//    {
+//        const ImDrawList *drawList = drawData->CmdLists[n];
+//        numNeededDraws += size_t( drawList->CmdBuffer.Size );
+//    }
+//
+//    Ogre::VaoManager *vaoManager = sceneManager->getDestinationRenderSystem()->getVaoManager();
+//    if( !mDummyMovableObject )
+//    {
+//        mDummyMovableObject = OGRE_NEW ImguiDummyMO(
+//            Id::generateNewId<Ogre::MovableObject>(),
+//            &sceneManager->_getEntityMemoryManager( Ogre::SCENE_STATIC ), sceneManager, 254u );
+//        sceneManager->getRootSceneNode( Ogre::SCENE_STATIC )->attachObject( mDummyMovableObject );
+//        mDummyMovableObject->setVisible( false );
+//        mDummyMovableObject->setCastShadows( false );
+//    }
+//
+//    const bool supportsIndirectBuffers = vaoManager->supportsIndirectBuffers();
+//
+//    unsigned char *indirectDraw = 0;
+//    if( numNeededDraws > 0u )
+//    {
+//        if( !mIndirectBuffer ||
+//            ( numNeededDraws * sizeof( CbDrawIndexed ) ) > mIndirectBuffer->getNumElements() )
+//        {
+//            if( mIndirectBuffer )
+//            {
+//                if( mIndirectBuffer->getMappingState() != MS_UNMAPPED )
+//                    mIndirectBuffer->unmap( UO_UNMAP_ALL );
+//                vaoManager->destroyIndirectBuffer( mIndirectBuffer );
+//            }
+//            mIndirectBuffer = vaoManager->createIndirectBuffer( numNeededDraws * sizeof( CbDrawIndexed ),
+//                                                                BT_DYNAMIC_PERSISTENT, 0, false );
+//        }
+//
+//        if( supportsIndirectBuffers )
+//        {
+//            indirectDraw = static_cast<unsigned char *>(
+//                mIndirectBuffer->map( 0, mIndirectBuffer->getNumElements() ) );
+//        }
+//        else
+//        {
+//            indirectDraw = mIndirectBuffer->getSwBufferPtr();
+//        }
+//    }
+//
+//    // iterate through all lists (at the moment every window has its own)
+//    for( int n = 0; n < drawData->CmdListsCount; n++ )
+//    {
+//        const ImDrawList *drawList = drawData->CmdLists[n];
+//        const ImDrawVert *vtxBuf = drawList->VtxBuffer.Data;
+//        const ImDrawIdx *idxBuf = drawList->IdxBuffer.Data;
+//
+//        unsigned int startIdx = 0;
+//
+//        for( int i = 0; i < drawList->CmdBuffer.Size; i++ )
+//        {
+//            const ImDrawCmd *drawCmd = &drawList->CmdBuffer[i];
+//
+//            Ogre::TextureGpu* texture = reinterpret_cast<Ogre::TextureGpu* >( drawCmd->GetTexID() );
+//            Ogre::Renderable *renderable = getAvailableRenderable( texture );
+//
+//            // update their vertex buffers.
+//            renderable->updateVertexData( vtxBuf, &idxBuf[startIdx],
+//                                          (unsigned int)drawList->VtxBuffer.Size, drawCmd->ElemCount,
+//                                          vaoManager );
+//
+//            VertexArrayObject *vao = renderable->getVaos( VpNormal ).back();
+//
+//            CbDrawIndexed *cmd = reinterpret_cast<CbDrawIndexed *>( indirectDraw );
+//            indirectDraw += sizeof( CbDrawIndexed );
+//            cmd->primCount = vao->getPrimitiveCount();
+//            cmd->instanceCount = 1u;
+//            cmd->firstVertexIndex =
+//                uint32_t( vao->getIndexBuffer()->_getFinalBufferStart() + vao->getPrimitiveStart() );
+//            cmd->baseVertex = uint32_t( vao->getBaseVertexBuffer()->_getFinalBufferStart() );
+//            cmd->baseInstance = 0u;
+//
+//            startIdx += drawCmd->ElemCount;
+//        }
+//    }
+//
+//    if( indirectDraw && supportsIndirectBuffers )
+//        mIndirectBuffer->unmap( UO_KEEP_PERSISTENT );
+//
+//    // Delete unused renderables, but leaving just one element.
+//    RenderableMap::iterator itor = mAvailableRenderables.begin();
+//    RenderableMap::iterator endt = mAvailableRenderables.end();
+//
+//    while( itor != endt )
+//    {
+//        while( itor->second.size() > 1u )
+//        {
+//            Ogre::Renderable *renderable = itor->second.back();
+//            renderable->destroyBuffers( vaoManager );
+//            delete renderable;
+//            itor->second.pop_back();
+//        }
+//        ++itor;
+//    }
+//}
 //-----------------------------------------------------------------------------
 void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
                                        Ogre::TextureGpu* anyTargetTexture, Ogre::SceneManager *sceneManager,
                                        const Ogre::Camera* currentCamera )
 {
-    Ogre::HlmsManager* hlmsManager = Ogre::Root::getSingleton().getHlmsManager();
-    Ogre::Hlms* hlms = hlmsManager->getHlms( Ogre::HLMS_LOW_LEVEL );
+    Ogre::HlmsManager *hlmsManager = Ogre::Root::getSingleton().getHlmsManager();
+    Ogre::Hlms *hlms = hlmsManager->getHlms( Ogre::HLMS_LOW_LEVEL );
 
-    Ogre::RenderSystem* renderSystem = sceneManager->getDestinationRenderSystem();
+    Ogre::RenderSystem *renderSystem = sceneManager->getDestinationRenderSystem();
     mCommandBuffer->setCurrentRenderSystem( renderSystem );
 
     const bool bWasReadyForPresent = renderPassDesc->mReadyWindowForPresent;
-
     const Ogre::VaoManager *vaoManager = renderSystem->getVaoManager();
 
     int baseInstanceAndIndirectBuffers = 0;
-    if( vaoManager->supportsIndirectBuffers() )
-        baseInstanceAndIndirectBuffers = 2;
-    else if( vaoManager->supportsBaseInstance() )
+    if( vaoManager->supportsBaseInstance() )
         baseInstanceAndIndirectBuffers = 1;
 
-    // In theory we should call preparePassHash() after every executeRenderPassDescriptorDelayedActions,
-    // but it doesn't seem like it's needed and has a performance cost.
     Ogre::HlmsCache passCache = hlms->preparePassHash( 0, false, false, sceneManager );
 
     const int vpWidth = int( anyTargetTexture->getWidth() );
     const int vpHeight = int( anyTargetTexture->getHeight() );
-
     const Ogre::Vector4 viewportSize( 0, 0, 1, 1 );
 
-    mCommandBuffer->setCurrentRenderSystem( renderSystem );
-
     const Ogre::Matrix4 projMatrix =
-        getProjectionMatrix( renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera );
+        getProjectionMatrix( renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera, float(vpWidth), float(vpHeight));
 
     Ogre::RenderingMetrics stats;
 
-    const ImDrawData *drawData = mDrawData;
-    RenderableVec::const_iterator renderableBegin = mScheduledRenderables.begin();
-    RenderableVec::const_iterator renderableIt = renderableBegin;
-    for( int n = 0; n < drawData->CmdListsCount; n++ )
+    size_t cmdIndex = 0;
+    const size_t numCmds = mDrawCmds.size();
+
+    for (auto& cmd : mDrawCmds)
     {
-        const ImDrawList *drawList = drawData->CmdLists[n];
+        auto* renderable = cmd.renderable;
+        if (!renderable)
+            continue;
 
-        for( int i = 0; i < drawList->CmdBuffer.Size; i++ )
+        Ogre::Vector4 scissors = viewportSize;
+        if (cmd.scissorEnabled)
         {
-            Ogre::Renderable *renderable = *renderableIt;
-
-            const ImDrawCmd *drawCmd = &drawList->CmdBuffer[i];
-
-            // Set scissoring.
-            int scLeft = static_cast<int>( drawCmd->ClipRect.x );  // Obtain bounds
-            int scTop = static_cast<int>( drawCmd->ClipRect.y );
-            int scRight = static_cast<int>( drawCmd->ClipRect.z );
-            int scBottom = static_cast<int>( drawCmd->ClipRect.w );
-
-            // Clamp bounds to viewport dimensions.
-            scLeft = Math::Clamp( scLeft, 0, vpWidth );
-            scRight = Math::Clamp( scRight, 0, vpWidth );
-            scTop = Math::Clamp( scTop, 0, vpHeight );
-            scBottom = Math::Clamp( scBottom, 0, vpHeight );
+            int scLeft = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.x), 0, vpWidth );
+            int scTop = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.y), 0, vpHeight );
+            int scRight = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.z), 0, vpWidth );
+            int scBottom = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.w), 0, vpHeight );
 
             const float left = (float)scLeft / (float)vpWidth;
             const float top = (float)scTop / (float)vpHeight;
             const float width = (float)( scRight - scLeft ) / (float)vpWidth;
             const float height = (float)( scBottom - scTop ) / (float)vpHeight;
 
-            if( bWasReadyForPresent )
-            {
-                const bool bShouldBeReadyForPresent =
-                    ( n + 1 ) == drawData->CmdListsCount && ( i + 1 ) == drawList->CmdBuffer.Size;
-                if( bShouldBeReadyForPresent != renderPassDesc->mReadyWindowForPresent )
-                {
-                    renderSystem->endRenderPassDescriptor();
-                    renderPassDesc->mReadyWindowForPresent = bShouldBeReadyForPresent;
-                    renderPassDesc->entriesModified( RenderPassDescriptor::Colour );
-                }
-            }
-
-            const Ogre::Vector4 scissors = Ogre::Vector4( left, top, width, height );
-            renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
-                                                     &scissors, 1u, false, false );
-            renderSystem->executeRenderPassDescriptorDelayedActions();
-
-            QueuedRenderable queuedRenderable( 0u, renderable, mDummyMovableObject );
-
-            renderable->getMaterial()
-                ->getTechnique( 0u )
-                ->getPass( 0u )
-                ->getVertexProgramParameters()
-                ->setNamedConstant( "ProjectionMatrix", projMatrix );
-
-            // We can't cache anything because we're calling beginRenderPassDescriptor() on every
-            // iteration.
-            const Ogre::HlmsCache *Ogre::HlmsCache =
-                hlms->getMaterial( &c_dummyCache, passCache, queuedRenderable, false, nullptr );
-
-            CbPipelineStateObject *psoCmd = mCommandBuffer->addCommand<CbPipelineStateObject>();
-            *psoCmd = CbPipelineStateObject( &Ogre::HlmsCache->pso );
-
-            hlms->fillBuffersForV2( Ogre::HlmsCache, queuedRenderable, false, 0u, mCommandBuffer );
-
-            VertexArrayObject *vao = renderable->getVaos( VpNormal ).back();
-
-            OGRE_ASSERT_MEDIUM( vao->getVaoName() != 0u &&
-                                "Invalid Vao name! This can happen if a BT_IMMUTABLE buffer was "
-                                "recently created and VaoManager::_beginFrame() wasn't called" );
-
-            *mCommandBuffer->addCommand<CbVao>() = CbVao( vao );
-            *mCommandBuffer->addCommand<CbIndirectBuffer>() = CbIndirectBuffer( mIndirectBuffer );
-
-            void *offset = reinterpret_cast<void *>( mIndirectBuffer->_getFinalBufferStart() +
-                                                     sizeof( CbDrawIndexed ) *
-                                                         size_t( renderableIt - renderableBegin ) );
-
-            CbDrawCallIndexed *drawCall = mCommandBuffer->addCommand<CbDrawCallIndexed>();
-            *drawCall = CbDrawCallIndexed( baseInstanceAndIndirectBuffers, vao, offset );
-            drawCall->numDraws = 1u;
-            stats.mDrawCount += 1u;
-            stats.mInstanceCount += 1u;
-            stats.mFaceCount += vao->getPrimitiveCount() / 3u;
-            stats.mVertexCount += vao->getPrimitiveCount();
-
-            hlms->preCommandBufferExecution( mCommandBuffer );
-            mCommandBuffer->execute();
-            hlms->postCommandBufferExecution( mCommandBuffer );
-
-            ++renderableIt;
+            scissors = Ogre::Vector4( left, top, width, height );
         }
+
+        if( bWasReadyForPresent )
+        {
+            const bool bShouldBeReadyForPresent = (cmdIndex + 1) == numCmds;
+            if( bShouldBeReadyForPresent != renderPassDesc->mReadyWindowForPresent )
+            {
+                renderSystem->endRenderPassDescriptor();
+                renderPassDesc->mReadyWindowForPresent = bShouldBeReadyForPresent;
+                renderPassDesc->entriesModified( Ogre::RenderPassDescriptor::Colour );
+            }
+        }
+
+        renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
+                                                 &scissors, 1u, false, false );
+        renderSystem->executeRenderPassDescriptorDelayedActions();
+
+        if( cmd.texture )
+        {
+            renderable->getMaterial()->getTechnique(0u)->getPass(0u)
+                      ->getTextureUnitState(0u)->setTexture( cmd.texture );
+        }
+
+        Ogre::Matrix4 finalProjMatrix = projMatrix * cmd.transform;
+        renderable->getMaterial()->getTechnique( 0u )->getPass( 0u )
+            ->getVertexProgramParameters()->setNamedConstant( "ProjectionMatrix", finalProjMatrix );
+
+        Ogre::QueuedRenderable queuedRenderable( 0u, renderable, mDummyMovableObject );
+        const Ogre::HlmsCache *hlmsCache =
+            hlms->getMaterial( &c_dummyCache, passCache, queuedRenderable, false, nullptr );
+
+        Ogre::CbPipelineStateObject *psoCmd = mCommandBuffer->addCommand<Ogre::CbPipelineStateObject>();
+        *psoCmd = Ogre::CbPipelineStateObject( &hlmsCache->pso );
+
+        hlms->fillBuffersForV2( hlmsCache, queuedRenderable, false, 0u, mCommandBuffer );
+
+        Ogre::VertexArrayObject *vao = renderable->getVaos( Ogre::VpNormal ).back();
+
+        *mCommandBuffer->addCommand<Ogre::CbVao>() = Ogre::CbVao( vao );
+        
+        // Обратите внимание: CbIndirectBuffer удален. Мы используем прямое обращение к VAO
+        Ogre::CbDrawCallIndexed *drawCall = mCommandBuffer->addCommand<Ogre::CbDrawCallIndexed>();
+        *drawCall = Ogre::CbDrawCallIndexed( baseInstanceAndIndirectBuffers, vao, nullptr ); 
+        drawCall->numDraws = 1u;
+        
+        stats.mDrawCount += 1u;
+        stats.mInstanceCount += 1u;
+        stats.mFaceCount += vao->getPrimitiveCount() / 3u;
+        stats.mVertexCount += vao->getPrimitiveCount();
+
+        hlms->preCommandBufferExecution( mCommandBuffer );
+        mCommandBuffer->execute();
+        hlms->postCommandBufferExecution( mCommandBuffer );
+
+        cmdIndex++;
     }
 
     renderSystem->_addMetrics( stats );
 
-    // There was nothing for imgui to draw. We must still prepare the window for presenting.
+    // There was nothing for RmlUi to draw. We must still prepare the window for presenting.
     if( bWasReadyForPresent && !stats.mDrawCount )
     {
         Ogre::Vector4 scissors( 0, 0, 1, 1 );
@@ -739,33 +751,61 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
     }
 }
 
-void Manager::RenderGeometry(
-		Rml::CompiledGeometryHandle geometry,
-		Rml::Vector2f translation,
-		Rml::TextureHandle texture) 
+void Manager::BeginFrame()
 {
-    // 1. Сохраняем команду отрисовки
-    Command cmd;
+
+}
+
+ void Manager::EndFrame()
+ {
+    mDrawCmds.clear();
+ }
+
+Rml::CompiledGeometryHandle Manager::CompileGeometry(
+    Rml::Span<const Rml::Vertex> vertices,
+    Rml::Span<const int> indices)
+{
+    Ogre::VaoManager* vaoManager = Ogre::Root::getSingleton().getRenderSystem()->getVaoManager();
+    auto* renderable = new Renderable();
+    renderable->updateVertexData(
+        vertices.data(), 
+        indices.data(), 
+        vertices.size(), 
+        indices.size(), 
+        vaoManager
+    );
+
+    return reinterpret_cast<Rml::CompiledGeometryHandle>(renderable);
+}
+
+void Manager::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
+{
+    auto* renderable = reinterpret_cast<Renderable*>(geometry);
+    if (renderable)
+    {
+        auto* vaoManager = Ogre::Root::getSingleton().getRenderSystem()->getVaoManager();
+        renderable->destroyBuffers(vaoManager);
+        delete renderable;
+    }
+}
+
+void Manager::RenderGeometry(
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation,
+        Rml::TextureHandle texture) 
+{
+
+    auto& cmd = mDrawCmds.emplace_back();
+    cmd.renderable = reinterpret_cast<Renderable*>(geometry);
     cmd.texture = reinterpret_cast<Ogre::TextureGpu*>(texture);
     cmd.scissor = mCurrentScissor;
     cmd.scissorEnabled = mScissorEnabled;
-    cmd.indexOffset = mTempIndices.size();
-    cmd.indexCount = num_indices;
     
-    // Применяем трансляцию (сдвиг), который просит RmlUi
     cmd.transform = mCurrentTransform;
     cmd.transform.setTrans(Ogre::Vector3(translation.x, translation.y, 0));
-    
-    mDrawCmds.push_back(cmd);
 
-    // 2. Копируем геометрию во временные буферы
-    size_t vertexOffset = mTempVertices.size();
-    mTempVertices.insert(mTempVertices.end(), vertices, vertices + num_vertices);
-    
-    // Сдвигаем индексы с учетом текущего смещения вершин
-    for(int i = 0; i < num_indices; ++i) {
-        mTempIndices.push_back(indices[i] + vertexOffset);
-    }
+    if (!cmd.renderable->getMaterial())
+        cmd.renderable->setMaterial(createMaterialFor(cmd.texture));
 }
 
 // Управление ножницами
@@ -773,8 +813,23 @@ void Manager::EnableScissorRegion(bool enable) {
     mScissorEnabled = enable;
 }
 
-void Manager::SetScissorRegion(int x, int y, int width, int height) {
-    mCurrentScissor = Ogre::Vector4(x, y, x + width, y + height);
+void Manager::SetScissorRegion(Rml::Rectanglei region) {
+    mCurrentScissor = Ogre::Vector4(region.Left(), region.Top(), region.Right(), region.Bottom());
+}
+
+void Manager::SetTransform(const Rml::Matrix4f* transform) {
+    if (transform)
+        mCurrentTransform = Ogre::Matrix4(transform->data());
+    else
+        mCurrentTransform = Ogre::Matrix4::IDENTITY;
+}
+
+Rml::TextureHandle Manager::LoadTexture(
+    Rml::Vector2i& texture_dimensions,
+    const Rml::String& source
+)
+{
+    return 0;
 }
 
 Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions)
@@ -793,9 +848,10 @@ Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, R
     image.createEmptyImageLike(tex);
     Ogre::TextureBox dstBox = image.getData(0u);
     
+    const Rml::byte* srcData = source.data();
     for(uint32_t y = 0u; y < dstBox.height; ++y) {
         void *dstRaw = dstBox.at(0u, y, 0u);
-        memcpy(dstRaw, &source[y * dstBox.width * 4u], dstBox.width * 4u);
+        memcpy(dstRaw, &srcData[y * dstBox.width * 4u], dstBox.width * 4u);
     }
     
     tex->scheduleTransitionTo(Ogre::GpuResidency::Resident);
@@ -807,7 +863,8 @@ Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, R
 void Manager::ReleaseTexture(Rml::TextureHandle texture_handle)
 {
     Ogre::TextureGpu* tex = reinterpret_cast<Ogre::TextureGpu*>(texture_handle);
-    if(tex) {
+    if (tex)
+    {
         Ogre::TextureGpuManager *textureManager = Ogre::Root::getSingleton().getRenderSystem()->getTextureGpuManager();
         textureManager->destroyTexture(tex);
     }

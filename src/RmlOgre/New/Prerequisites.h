@@ -2,9 +2,14 @@
 
 #include "OgrePrerequisites.h"
 
-namespace Ogre
+#include <Ogre.h>
+
+namespace RmlOgre
 {
-    class CompositorPassProvider;
-    class Manager;
-    class Renderable;
-}  // namespace Ogre
+
+class CompositorPassProvider;
+class CompositorPassDef;
+class Manager;
+class Renderable;
+
+}  // namespace RmlOgre

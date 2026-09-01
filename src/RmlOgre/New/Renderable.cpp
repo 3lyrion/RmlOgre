@@ -39,8 +39,6 @@ Based on the implementation in https://github.com/edherbert/ogre-next-imgui
 #include "Vao/OgreVaoManager.h"
 #include "Vao/OgreVertexArrayObject.h"
 
-#include <imgui.h>
-
 using namespace RmlOgre;
 
 Renderable::Renderable()

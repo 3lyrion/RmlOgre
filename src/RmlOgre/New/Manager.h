@@ -3,21 +3,16 @@
 #include <RmlUi/Core.h>
 #include "Prerequisites.h"
 
-struct ImDrawList;
-typedef uint16_t ImDrawIdx;
-struct ImDrawVert;
-
 #include <map>
-
-struct ImFontAtlas;
-struct ImDrawData;
 
 namespace RmlOgre
 {
 
+class Renderable;
+
 class Manager : public Rml::RenderInterface
 {
-    typedef std::vector<Ogre::Renderable *>             RenderableVec;
+    typedef std::vector<Renderable*>                    RenderableVec;
     typedef std::map<Ogre::TextureGpu* , RenderableVec> RenderableMap;
 
     struct Command
@@ -37,21 +32,23 @@ class Manager : public Rml::RenderInterface
         //Ogre::TextureGpu* texture;
 
         Ogre::TextureGpu* texture;
+        Renderable* renderable;
         Ogre::Vector4 scissor;
         bool scissorEnabled;
-        uint32_t indexOffset;
-        uint32_t indexCount;
         Ogre::Matrix4 transform;
     };
 
     RenderableMap mAvailableRenderables;
     RenderableVec mScheduledRenderables;
 
-    std::vector<Command> mDrawList;
-    size_t mCurrentVertexCount = 0;
-    size_t mCurrentIndexCount = 0;
+    std::vector<Command> mDrawCmds;
+    //std::vector<Rml::Vertex> mTempVertices;
+    //std::vector<int> mTempIndices;
+    //uint32_t mCurrentVertexCount = 0;
+    //uint32_t mCurrentIndexCount = 0;
     Ogre::Vector4 mCurrentScissor;
     bool mScissorEnabled = false;
+    Ogre::Matrix4 mCurrentTransform;
 
     Ogre::IndirectBufferPacked* mIndirectBuffer;
     Ogre::CommandBuffer*        mCommandBuffer;
@@ -72,16 +69,19 @@ class Manager : public Rml::RenderInterface
     void destroyAllResources();
 
     Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
-                                    const Ogre::Camera* currentCamera ) const;
+                                    const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
 
 public:
     Manager();
     ~Manager();
 
-    void prepareForRender( Ogre::SceneManager *sceneManager );
+    //void prepareForRender( Ogre::SceneManager *sceneManager );
 
     void drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture,
                                 Ogre::SceneManager *sceneManager, const Ogre::Camera* currentCamera );
+
+    void BeginFrame();
+    void EndFrame();
 
 	Rml::CompiledGeometryHandle CompileGeometry(
 		Rml::Span<const Rml::Vertex> vertices,
@@ -109,6 +109,7 @@ public:
 
 	void SetTransform(const Rml::Matrix4f* transform) override;
 
+    /*
 	void EnableClipMask(bool enable) override;
 	void RenderToClipMask(
 		Rml::ClipMaskOperation operation,
@@ -145,6 +146,7 @@ public:
 		Rml::TextureHandle texture
 	) override;
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
+    */
 };
 
 }  // namespace RmlOgre

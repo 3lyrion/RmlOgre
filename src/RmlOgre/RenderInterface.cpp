@@ -661,14 +661,3 @@ void RenderInterface::ReleaseShader(Rml::CompiledShaderHandle shader)
 {
 	this->shaders.erase(shader);
 }
-
-
-CompositorPassMain::CompositorPassMain(Ogre::CompositorPassDef const* definition, Ogre::CompositorNode* parentNode, RenderInterface* renderInterface) :
-    Ogre::CompositorPass(definition, parentNode),
-    m_renderInterface   (renderInterface)
-{ }
-
-void CompositorPassMain:execute(Ogre::Camera const* lodCamera)
-{
-
-}

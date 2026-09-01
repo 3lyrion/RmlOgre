@@ -1,144 +1,107 @@
-/*
------------------------------------------------------------------------------
-This source file is part of OGRE-Next
-    (Object-oriented Graphics Rendering Engine)
-For the latest info, see http://www.ogre3d.org/
-
-Copyright (c) 2000-2025 Torus Knot Software Ltd
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-Original implementation by Crashy.
-Further enhancements by edherbert.
-General fixes: Various people https://forums.ogre3d.org/viewtopic.php?t=93889
-Updated for Ogre-Next 2.3 by Vian https://forums.ogre3d.org/viewtopic.php?t=96798
-Reworked for Ogre-Next 4.0 by Matias N. Goldberg.
-
-Based on the implementation in https://github.com/edherbert/ogre-next-imgui
------------------------------------------------------------------------------
-*/
-
 #include "CompositorPassProvider.h"
 
 #include "CompositorPass.h"
 #include "CompositorPassDef.h"
 #include "OgreScriptTranslator.h"
 
-namespace Ogre
+using namespace RmlOgre;
+
+CompositorPassProvider::CompositorPassProvider( Manager *Manager ) :
+    mManager( Manager )
 {
-    CompositorPassProvider::CompositorPassProvider( Manager *Manager ) :
-        mManager( Manager )
+}
+//-------------------------------------------------------------------------
+Ogre::CompositorPassDef *CompositorPassProvider::addPassDef( Ogre::CompositorPassType passType,
+                                                            Ogre::IdString customId,
+                                                            Ogre::CompositorTargetDef *parentTargetDef,
+                                                            Ogre::CompositorNodeDef *parentNodeDef )
+{
+    if( customId == "rmlui" )
     {
+        return OGRE_NEW CompositorPassDef( parentTargetDef );
     }
-    //-------------------------------------------------------------------------
-    CompositorPassDef *CompositorPassProvider::addPassDef( CompositorPassType passType,
-                                                                IdString customId,
-                                                                CompositorTargetDef *parentTargetDef,
-                                                                CompositorNodeDef *parentNodeDef )
-    {
-        if( customId == "dear_imgui" )
-        {
-            return OGRE_NEW CompositorPassDef( parentTargetDef );
-        }
 
+    return 0;
+}
+//-------------------------------------------------------------------------
+Ogre::CompositorPass *CompositorPassProvider::addPass( const Ogre::CompositorPassDef *definition,
+                                                        Ogre::Camera* defaultCamera,
+                                                        Ogre::CompositorNode *parentNode,
+                                                        const Ogre::RenderTargetViewDef *rtvDef,
+                                                        Ogre::SceneManager *sceneManager )
+{
+    // Not created by us.
+    if( definition->getCustomId() != Ogre::IdString( "rmlui" ).getU32Value() )
         return 0;
-    }
-    //-------------------------------------------------------------------------
-    CompositorPass *CompositorPassProvider::addPass( const CompositorPassDef *definition,
-                                                          Ogre::Camera* defaultCamera,
-                                                          CompositorNode *parentNode,
-                                                          const RenderTargetViewDef *rtvDef,
-                                                          Ogre::SceneManager *sceneManager )
-    {
-        // Not created by us.
-        if( definition->getCustomId() != IdString( "dear_imgui" ).getU32Value() )
-            return 0;
 
-        OGRE_ASSERT_HIGH( dynamic_cast<const CompositorPassDef *>( definition ) );
-        const CompositorPassDef *imguiDef =
-            static_cast<const CompositorPassDef *>( definition );
-        return OGRE_NEW CompositorPass( imguiDef, defaultCamera, sceneManager, rtvDef, parentNode,
-                                             mManager );
-    }
-    //-------------------------------------------------------------------------
-    static bool ScriptTranslatorGetBoolean( const AbstractNodePtr &node, bool *result )
-    {
-        if( node->type != ANT_ATOM )
-            return false;
-        const AtomAbstractNode *atom = (const AtomAbstractNode *)node.get();
-        if( atom->id == 1 || atom->id == 2 )
-        {
-            *result = atom->id == 1 ? true : false;
-            return true;
-        }
+    OGRE_ASSERT_HIGH( dynamic_cast<const CompositorPassDef *>( definition ) );
+    const CompositorPassDef *imguiDef =
+        static_cast<const CompositorPassDef *>( definition );
+    return OGRE_NEW CompositorPass( imguiDef, defaultCamera, sceneManager, rtvDef, parentNode,
+                                            mManager );
+}
+//-------------------------------------------------------------------------
+static bool ScriptTranslatorGetBoolean( const Ogre::AbstractNodePtr &node, bool *result )
+{
+    if( node->type != Ogre::ANT_ATOM )
         return false;
-    }
-    //-------------------------------------------------------------------------
-    void CompositorPassProvider::translateCustomPass( ScriptCompiler *compiler,
-                                                           const AbstractNodePtr &node,
-                                                           IdString customId,
-                                                           CompositorPassDef *customPassDef )
+    const Ogre::AtomAbstractNode *atom = (const Ogre::AtomAbstractNode *)node.get();
+    if( atom->id == 1 || atom->id == 2 )
     {
-        if( customId != "dear_imgui" )
-            return;  // Custom pass not created by us
-
-        CompositorPassDef *imguiDef = static_cast<CompositorPassDef *>( customPassDef );
-
-        ObjectAbstractNode *obj = reinterpret_cast<ObjectAbstractNode *>( node.get() );
-
-        obj->context = Any( static_cast<CompositorPassDef *>( imguiDef ) );
-
-        AbstractNodeList::const_iterator itor = obj->children.begin();
-        AbstractNodeList::const_iterator endt = obj->children.end();
-
-        while( itor != endt )
-        {
-            if( ( *itor )->type == ANT_OBJECT )
-            {
-                ObjectAbstractNode *childObj = reinterpret_cast<ObjectAbstractNode *>( itor->get() );
-
-                if( childObj->id == ID_LOAD )
-                {
-                    CompositorLoadActionTranslator compositorLoadActionTranslator;
-                    compositorLoadActionTranslator.translate( compiler, *itor );
-                }
-                else if( childObj->id == ID_STORE )
-                {
-                    CompositorStoreActionTranslator compositorStoreActionTranslator;
-                    compositorStoreActionTranslator.translate( compiler, *itor );
-                }
-            }
-            else if( ( *itor )->type == ANT_PROPERTY )
-            {
-                const PropertyAbstractNode *prop =
-                    reinterpret_cast<const PropertyAbstractNode *>( itor->get() );
-                if( prop->name == "sets_resolution" )
-                {
-                    if( prop->values.size() != 1u ||
-                        !ScriptTranslatorGetBoolean( prop->values.front(), &imguiDef->mSetsResolution ) )
-                    {
-                        compiler->addError( ScriptCompiler::CE_STRINGEXPECTED, obj->file, obj->line,
-                                            "sets_resolution expects a boolean value" );
-                    }
-                }
-            }
-            ++itor;
-        }
+        *result = atom->id == 1 ? true : false;
+        return true;
     }
-}  // namespace Ogre
+    return false;
+}
+//-------------------------------------------------------------------------
+void CompositorPassProvider::translateCustomPass( Ogre::ScriptCompiler *compiler,
+                                                        const Ogre::AbstractNodePtr &node,
+                                                        Ogre::IdString customId,
+                                                        Ogre::CompositorPassDef *customPassDef )
+{
+    if( customId != "dear_imgui" )
+        return;  // Custom pass not created by us
+
+    CompositorPassDef *imguiDef = static_cast<CompositorPassDef *>( customPassDef );
+
+    Ogre::ObjectAbstractNode *obj = reinterpret_cast<Ogre::ObjectAbstractNode *>( node.get() );
+
+    obj->context = Ogre::Any( static_cast<CompositorPassDef *>( imguiDef ) );
+
+    Ogre::AbstractNodeList::const_iterator itor = obj->children.begin();
+    Ogre::AbstractNodeList::const_iterator endt = obj->children.end();
+
+    while( itor != endt )
+    {
+        if( ( *itor )->type == Ogre::ANT_OBJECT )
+        {
+            Ogre::ObjectAbstractNode *childObj = reinterpret_cast<Ogre::ObjectAbstractNode *>( itor->get() );
+
+            if( childObj->id == Ogre::ID_LOAD )
+            {
+                Ogre::CompositorLoadActionTranslator compositorLoadActionTranslator;
+                compositorLoadActionTranslator.translate( compiler, *itor );
+            }
+            else if( childObj->id == Ogre::ID_STORE )
+            {
+                Ogre::CompositorStoreActionTranslator compositorStoreActionTranslator;
+                compositorStoreActionTranslator.translate( compiler, *itor );
+            }
+        }
+        else if( ( *itor )->type == Ogre::ANT_PROPERTY )
+        {
+            const Ogre::PropertyAbstractNode *prop =
+                reinterpret_cast<const Ogre::PropertyAbstractNode *>( itor->get() );
+            if( prop->name == "sets_resolution" )
+            {
+                if( prop->values.size() != 1u ||
+                    !ScriptTranslatorGetBoolean( prop->values.front(), &imguiDef->mSetsResolution ) )
+                {
+                    compiler->addError( Ogre::ScriptCompiler::CE_STRINGEXPECTED, obj->file, obj->line,
+                                        "sets_resolution expects a boolean value" );
+                }
+            }
+        }
+        ++itor;
+    }
+}

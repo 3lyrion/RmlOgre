@@ -211,17 +211,4 @@ public:
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
 };
 
-class CompositorPassMain : public Ogre::CompositorPass
-{
-public:
-    CompositorPassMain(Ogre::CompositorPassDef const* definition, Ogre::CompositorNode* parentNode, RenderInterface* renderInterface);
-
-    void execute(Ogre::Camera const* lodCamera) final;
-
-private:
-    RenderInterface* m_renderInterface = nullptr;
-};
-
-}
-
 #endif // NIMBLE_RMLOGRE_RENDERINTERFACE_HPP
