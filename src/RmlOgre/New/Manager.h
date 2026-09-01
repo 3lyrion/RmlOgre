@@ -46,14 +46,15 @@ class Manager : public Rml::RenderInterface
     //std::vector<int> mTempIndices;
     //uint32_t mCurrentVertexCount = 0;
     //uint32_t mCurrentIndexCount = 0;
-    Ogre::Vector4 mCurrentScissor;
+    Ogre::Vector4 mCurrentScissor = { 0.0f, 0.0f, 1.0f, 1.0f };
     bool mScissorEnabled = false;
-    Ogre::Matrix4 mCurrentTransform;
+    Ogre::Matrix4 mCurrentTransform = Ogre::Matrix4::IDENTITY;
 
     Ogre::IndirectBufferPacked* mIndirectBuffer;
     Ogre::CommandBuffer*        mCommandBuffer;
 
     Ogre::MovableObject *mDummyMovableObject;
+    Ogre::SceneManager*  m_sceneManager{};
 
     /// Ensures all shaders are created.
     void createPrograms();
@@ -79,6 +80,8 @@ public:
 
     void drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture,
                                 Ogre::SceneManager *sceneManager, const Ogre::Camera* currentCamera );
+
+    void SetSceneManager(Ogre::SceneManager& sceneManager);
 
     void BeginFrame();
     void EndFrame();

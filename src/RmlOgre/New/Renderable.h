@@ -1,3 +1,5 @@
+#pragma once
+
 #include <OgreRenderOperation.h>
 #include <OgreRenderable.h>
 
