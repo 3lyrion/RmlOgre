@@ -108,7 +108,7 @@ void Renderable::updateVertexData( const Rml::Vertex *vtxBuf, const int *idxBuf,
     {
         Ogre::VertexElement2Vec vertexElements;
         vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_POSITION ) );
-        vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_COLOUR, Ogre::VES_DIFFUSE ) );
+        vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_UBYTE4_NORM, Ogre::VES_DIFFUSE ) );
         vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES ) );
 
         vertexBuffer = vaoManager->createVertexBuffer( vertexElements, size_t( vtxCount ),
@@ -116,7 +116,7 @@ void Renderable::updateVertexData( const Rml::Vertex *vtxBuf, const int *idxBuf,
     }
     if( idxCount > getIndexCount() )
     {
-        indexBuffer = vaoManager->createIndexBuffer( Ogre::IndexBufferPacked::IT_16BIT, size_t( idxCount ),
+        indexBuffer = vaoManager->createIndexBuffer( Ogre::IndexBufferPacked::IT_32BIT, size_t( idxCount ),
                                                      Ogre::BT_DYNAMIC_PERSISTENT, nullptr, false );
     }
 

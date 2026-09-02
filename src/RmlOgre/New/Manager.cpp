@@ -53,30 +53,33 @@ namespace
         BlankTexture = textureManager->createTexture("RmlUi/BlankTexture",
             Ogre::GpuPageOutStrategy::AlwaysKeepSystemRamCopy,
             0,
-            Ogre::TextureTypes::Type2D);
-        
+            Ogre::TextureTypes::Type2D,
+            Ogre::BLANKSTRING);
+        BlankTexture->setNumMipmaps(1);
         BlankTexture->setResolution( 1u, 1u );
         BlankTexture->setPixelFormat( Ogre::PixelFormatGpu::PFG_RGBA8_UNORM );
 
-        Ogre::Image2 image;
-        image.createEmptyImageLike( BlankTexture );
-        Ogre::TextureBox dstBox = image.getData( 0u );
+        auto image = OGRE_NEW Ogre::Image2;
+        image->createEmptyImageLike( BlankTexture );
+        Ogre::TextureBox dstBox = image->getData( 0u );
     
         uint32_t whitePixel = 0xFFFFFFFF;
         memcpy( dstBox.data, &whitePixel, sizeof( uint32_t ) );
 
-        // Tweak via _setAutoDelete so the internal data is copied as a pointer
-        // instead of performing a deep copy of the data; while leaving the responsability
-        // of freeing memory to imagePtr instead.
-        image._setAutoDelete( false );
-        auto imagePtr = new Ogre::Image2( image );
-        imagePtr->_setAutoDelete( true );
+        BlankTexture->scheduleTransitionTo(Ogre::GpuResidency::Resident, image);
 
-        if (BlankTexture->getNextResidencyStatus() == Ogre::GpuResidency::Resident)
-            BlankTexture->scheduleTransitionTo(Ogre::GpuResidency::OnStorage);
-        // Ogre will call "delete imagePtr" when done, because we're passing
-        // true to autoDeleteImage argument in scheduleTransitionTo.
-        BlankTexture->scheduleTransitionTo(Ogre::GpuResidency::Resident, imagePtr, true);
+        //// Tweak via _setAutoDelete so the internal data is copied as a pointer
+        //// instead of performing a deep copy of the data; while leaving the responsability
+        //// of freeing memory to imagePtr instead.
+        //image._setAutoDelete( false );
+        //auto imagePtr = new Ogre::Image2( image );
+        //imagePtr->_setAutoDelete( true );
+
+        //if (BlankTexture->getNextResidencyStatus() == Ogre::GpuResidency::Resident)
+        //    BlankTexture->scheduleTransitionTo(Ogre::GpuResidency::OnStorage);
+        //// Ogre will call "delete imagePtr" when done, because we're passing
+        //// true to autoDeleteImage argument in scheduleTransitionTo.
+        //BlankTexture->scheduleTransitionTo(Ogre::GpuResidency::Resident, imagePtr, true);
     }
 
 }
@@ -871,6 +874,11 @@ Rml::CompiledGeometryHandle Manager::CompileGeometry(
 void Manager::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
 {
     auto* renderable = reinterpret_cast<Renderable*>(geometry);
+
+    auto entry = std::ranges::find(mDrawCmds, renderable, &Command::renderable);
+    if (entry != mDrawCmds.end())
+        mDrawCmds.erase(entry);
+
     if (renderable)
     {
         auto* vaoManager = Ogre::Root::getSingleton().getRenderSystem()->getVaoManager();
@@ -884,7 +892,6 @@ void Manager::RenderGeometry(
         Rml::Vector2f translation,
         Rml::TextureHandle texture) 
 {
-
     auto& cmd = mDrawCmds.emplace_back();
     cmd.renderable = reinterpret_cast<Renderable*>(geometry);
     cmd.texture = reinterpret_cast<Ogre::TextureGpu*>(texture);
@@ -898,12 +905,13 @@ void Manager::RenderGeometry(
         cmd.renderable->setMaterial(createMaterialFor(cmd.texture));
 }
 
-// Управление ножницами
-void Manager::EnableScissorRegion(bool enable) {
+void Manager::EnableScissorRegion(bool enable)
+{
     mScissorEnabled = enable;
 }
 
-void Manager::SetScissorRegion(Rml::Rectanglei region) {
+void Manager::SetScissorRegion(Rml::Rectanglei region)
+{
     mCurrentScissor = Ogre::Vector4(region.Left(), region.Top(), region.Right(), region.Bottom());
 }
 
@@ -947,7 +955,7 @@ Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, R
     Ogre::TextureGpu* texture = textureManager->createTexture(
         texName,
         Ogre::GpuPageOutStrategy::AlwaysKeepSystemRamCopy,
-        Ogre::TextureFlags::AutomaticBatching,
+        0,
         Ogre::TextureTypes::Type2D,
         Ogre::BLANKSTRING);
     texture->setNumMipmaps(1);
