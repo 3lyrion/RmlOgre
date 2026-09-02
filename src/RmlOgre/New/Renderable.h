@@ -19,7 +19,7 @@ class Renderable final : public Ogre::Renderable
 
 public:
     Renderable();
-    ~Renderable() override;
+    ~Renderable() final;
 
     void destroyBuffers( Ogre::VaoManager *vaoManager );
 
@@ -27,10 +27,10 @@ public:
     void updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, Ogre::VaoManager *vaoManager );
 
     // Overrides from Renderable
-    void getWorldTransforms( Ogre::Matrix4 *xform ) const override;
-    void getRenderOperation( Ogre::v1::RenderOperation &op, bool casterPass ) override;
+    void getWorldTransforms( Ogre::Matrix4 *xform ) const final;
+    void getRenderOperation( Ogre::v1::RenderOperation &op, bool casterPass ) final;
 
-    const Ogre::LightList &getLights( void ) const override;
+    const Ogre::LightList &getLights( void ) const final;
 };
 
 } // namespace RmlOgre

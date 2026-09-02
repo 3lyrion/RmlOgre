@@ -11,8 +11,8 @@ namespace nimble::RmlOgre {
 template <class T>
 class ObjectIndex
 {
-	std::vector<std::optional<T>> array;
-	std::vector<std::size_t> empty;
+	Vector<std::optional<T>> array;
+	Vector<std::size_t> empty;
 
 public:
 	std::size_t insert(T&& resource)
@@ -26,7 +26,7 @@ public:
 		else
 		{
 			index = this->array.size();
-			this->array.push_back(std::nullopt);
+			this->array.emplace_back(std::nullopt);
 		}
 
 		this->array[index] = std::move(resource);
@@ -64,15 +64,13 @@ public:
 
 	T& at(std::size_t index)
 	{
-		if(!this->has(index))
-			throw std::out_of_range("ObjectIndex::at index out of range");
+		assert(this->has(index) && "ObjectIndex::at index out of range");
 
 		return this->array[index].value();
 	}
 	const T& at(std::size_t index) const
 	{
-		if(!this->has(index))
-			throw std::out_of_range("ObjectIndex::at index out of range");
+		assert(this->has(index) && "ObjectIndex::at index out of range");
 
 		return this->array[index].value();
 	}

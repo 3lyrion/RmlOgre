@@ -33,7 +33,7 @@ public:
 
 	void addTextureDependencies(const Ogre::CompositorChannelVec& textures);
 
-	void execute(const Ogre::Camera* lodCamera) override;
+	void execute(const Ogre::Camera* lodCamera) final;
 };
 
 }

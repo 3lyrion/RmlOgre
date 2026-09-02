@@ -21,7 +21,6 @@ void RenderQuadPass::writePass(
 	if(passes.empty())
 		return;
 
-	assert(dynamic_cast<CompositorPassRenderQuad*>(passes.at(passIndex)));
 	auto* nodePass = static_cast<CompositorPassRenderQuad*>(passes.at(passIndex));
 
 	if(this->material)
@@ -65,7 +64,6 @@ void RenderToTexturePass::writePass(
 	if(passes.empty())
 		return;
 
-	assert(dynamic_cast<CompositorPassRenderQuad*>(passes.at(0)));
 	auto* nodePass = static_cast<CompositorPassRenderQuad*>(passes.at(0));
 
 	Ogre::Vector4 scissorRegion;

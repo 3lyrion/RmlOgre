@@ -25,9 +25,9 @@ public:
                             Ogre::SceneManager *sceneManager, const Ogre::RenderTargetViewDef *rtv,
                             Ogre::CompositorNode *parentNode, Manager *Manager );
 
-    void execute( const Ogre::Camera* lodCamera ) override;
+    void execute( const Ogre::Camera* lodCamera ) final;
 
-    bool notifyRecreated( const Ogre::TextureGpu* channel ) override;
+    bool notifyRecreated( const Ogre::TextureGpu* channel ) final;
 
 private:
     CompositorPassDef const *mDefinition;

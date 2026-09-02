@@ -45,10 +45,10 @@ namespace
             MovableObject( id, objectMemoryManager, manager, renderQueueId )
         {
         }
-        ~ImguiDummyMO() override {}
+        ~ImguiDummyMO() final {}
 
         // Overrides from MovableObject
-        const Ogre::String &getMovableType() const override { return Ogre::BLANKSTRING; }
+        const Ogre::String &getMovableType() const final { return Ogre::BLANKSTRING; }
     };
 
     void createBlankDatablock(Ogre::HlmsMacroblock& macroblock, Ogre::HlmsBlendblock& blendblock)

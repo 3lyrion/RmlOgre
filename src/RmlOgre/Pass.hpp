@@ -32,7 +32,7 @@ struct RenderPass : BaseRenderPass
 	void writePass(
 		Workspace& workspace,
 		Ogre::CompositorNode* node
-	) const override
+	) const final
 	{
 		this->writeRenderPass(workspace, node, 0);
 	}
@@ -50,7 +50,7 @@ struct RenderWithStencilPass : BaseRenderPass
 	void writePass(
 		Workspace& workspace,
 		Ogre::CompositorNode* node
-	) const override
+	) const final
 	{
 		this->writeRenderPass(workspace, node, 1);
 	}
@@ -68,7 +68,7 @@ struct RenderToStencilSetPass : BaseRenderPass
 	void writePass(
 		Workspace& workspace,
 		Ogre::CompositorNode* node
-	) const override
+	) const final
 	{
 		this->writeRenderPass(workspace, node, 2);
 	}
@@ -86,7 +86,7 @@ struct RenderToStencilSetInversePass : BaseRenderPass
 	void writePass(
 		Workspace& workspace,
 		Ogre::CompositorNode* node
-	) const override
+	) const final
 	{
 		this->writeRenderPass(workspace, node, 2);
 	}
@@ -104,7 +104,7 @@ struct RenderToStencilIntersectPass : BaseRenderPass
 	void writePass(
 		Workspace& workspace,
 		Ogre::CompositorNode* node
-	) const override
+	) const final
 	{
 		this->writeRenderPass(workspace, node, 1);
 	}
@@ -120,7 +120,7 @@ struct NewBufferPass : BasePass
 		out{out}
 	{}
 
-	void addExtraConnections(NodeConnectionMap& connections) const override
+	void addExtraConnections(NodeConnectionMap& connections) const final
 	{
 		assert(this->out >= 0);
 		connections.setOut(this->out, 3);
@@ -144,7 +144,7 @@ struct SwapPass : BasePass
 		swapOut{swapOut}
 	{}
 
-	void addExtraConnections(NodeConnectionMap& connections) const override
+	void addExtraConnections(NodeConnectionMap& connections) const final
 	{
 		assert(this->swapIn >= 0);
 		connections.setIn(this->swapIn, 3);
@@ -164,7 +164,7 @@ struct CopyPass : BasePass
 		copyOut{copyOut}
 	{}
 
-	void addExtraConnections(NodeConnectionMap& connections) const override
+	void addExtraConnections(NodeConnectionMap& connections) const final
 	{
 		assert(this->copyIn >= 0);
 		assert(this->copyOut >= 0);
@@ -219,7 +219,7 @@ struct CompositePass : RenderQuadPass
 		bool noBlending,
 		const RenderPassSettings& renderPassSettings);
 
-	void addExtraConnections(NodeConnectionMap& connections) const override
+	void addExtraConnections(NodeConnectionMap& connections) const final
 	{
 		assert(this->dstIn >= 0);
 		assert(this->tmpOut >= 0);
@@ -237,7 +237,7 @@ struct CompositeWithStencilPass : CompositePass
 	void writePass(
 		Workspace& workspace,
 		Ogre::CompositorNode* node
-	) const override
+	) const final
 	{
 		RenderQuadPass::writePass(workspace, node, 1);
 	}
@@ -263,7 +263,7 @@ struct RenderToTexturePass : RenderQuadPass
 		renderTexture{renderTexture}
 	{}
 
-	void addExtraConnections(NodeConnectionMap& connections) const override
+	void addExtraConnections(NodeConnectionMap& connections) const final
 	{
 		assert(this->renderTexture >= 0);
 		connections.setExternal(this->renderTexture, 3);

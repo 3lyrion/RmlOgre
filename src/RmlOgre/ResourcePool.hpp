@@ -1,6 +1,7 @@
 #ifndef NIMBLE_RMLOGRE_RESOURCEPOOL_HPP
 #define NIMBLE_RMLOGRE_RESOURCEPOOL_HPP
 
+#include "Precompiled.h"
 #include <cassert>
 #include <deque>
 #include <unordered_map>
@@ -13,7 +14,7 @@ namespace nimble::RmlOgre {
 template <class T>
 class ResourcePool
 {
-	std::vector<T> resources;
+	Vector<T> resources;
 	std::deque<std::size_t> unused_;
 	std::unordered_map<T, std::size_t> used_;
 

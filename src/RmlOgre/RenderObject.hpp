@@ -29,24 +29,24 @@ public:
 
 	void setVao(Ogre::VertexArrayObject* vao);
 
-	const Ogre::String& getMovableType() const override;
+	const Ogre::String& getMovableType() const final;
 
-	bool getPolygonModeOverrideable() const override { return false; }
+	bool getPolygonModeOverrideable() const final { return false; }
 
-	const Ogre::LightList& getLights() const override
+	const Ogre::LightList& getLights() const final
 	{
 		static Ogre::LightList ll;
 		return ll;
 	}
 
-	void getWorldTransforms(Ogre::Matrix4*) const override
+	void getWorldTransforms(Ogre::Matrix4*) const final
 	{
 		OGRE_EXCEPT(Ogre::Exception::ERR_NOT_IMPLEMENTED,
 			"nimble::RmlOgre::RenderObject doesn't implements getWorldTransforms.",
 			"nimble::RmlOgre::RenderObject::getWorldTransforms");
 	}
 
-	void getRenderOperation(Ogre::v1::RenderOperation& op, bool casterPass) override
+	void getRenderOperation(Ogre::v1::RenderOperation& op, bool casterPass) final
 	{
 		OGRE_EXCEPT(Ogre::Exception::ERR_NOT_IMPLEMENTED,
 			"nimble::RmlOgre::RenderObject doesn't support the old v1::RenderOperations.",

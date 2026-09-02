@@ -29,7 +29,7 @@ public:
     */
     Ogre::CompositorPassDef* addPassDef(Ogre::CompositorPassType passType, Ogre::IdString customId,
                                                     Ogre::CompositorTargetDef *parentTargetDef,
-                                                    Ogre::CompositorNodeDef   *parentNodeDef ) override;
+                                                    Ogre::CompositorNodeDef   *parentNodeDef ) final;
 
     /** Creates a CompositorPass from a CompositorPassDef for Compositor Ogre::Pass of type 'custom'
     @remarks    If you have multiple custom pass types then you will need to use dynamic_cast<>()
@@ -41,10 +41,10 @@ public:
     Ogre::CompositorPass *ogre_nullable addPass( const Ogre::CompositorPassDef *definition,
                                             Ogre::Camera* defaultCamera, Ogre::CompositorNode *parentNode,
                                             const Ogre::RenderTargetViewDef *rtvDef,
-                                            Ogre::SceneManager              *sceneManager ) override;
+                                            Ogre::SceneManager              *sceneManager ) final;
 
     void translateCustomPass( Ogre::ScriptCompiler *compiler, const Ogre::AbstractNodePtr &node,
-                                Ogre::IdString customId, Ogre::CompositorPassDef *customPassDef ) override;
+                                Ogre::IdString customId, Ogre::CompositorPassDef *customPassDef ) final;
 };
 
 }  // namespace RmlOgre

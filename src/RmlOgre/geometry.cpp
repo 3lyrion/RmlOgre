@@ -12,7 +12,6 @@ struct GuiVertex
 {
 	Ogre::Vector2 position;
 	Ogre::ColourValue colour;
-	Ogre::uint32 colour2;
 	Ogre::Vector2 uv;
 
 	GuiVertex(const Rml::Vertex& v) :
@@ -74,7 +73,7 @@ Ogre::VertexArrayObject* nimble::RmlOgre::create_vao(
 		vertices.size(),
 		Ogre::BT_DEFAULT,
 		ogreVertices,
-		true);
+		false);
 
 	Ogre::VertexBufferPackedVec vertexBuffers;
 	vertexBuffers.push_back(vertexBuffer);
@@ -89,7 +88,7 @@ Ogre::VertexArrayObject* nimble::RmlOgre::create_vao(
 		indices.size(),
 		Ogre::BT_IMMUTABLE,
 		ogreIndices,
-		true);
+		false);
 
 	return vaoManager->createVertexArrayObject(
 		vertexBuffers,

@@ -29,8 +29,8 @@ public:
 		material{material}
 	{}
 
-	void apply(RenderInterface& renderInterface) override;
-	void release(RenderInterface& renderInterface) override;
+	void apply(RenderInterface& renderInterface) final;
+	void release(RenderInterface& renderInterface) final;
 };
 
 class FilterMaker

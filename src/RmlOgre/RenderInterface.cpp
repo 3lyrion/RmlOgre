@@ -9,7 +9,6 @@
 #include <Compositor/OgreCompositorNode.h>
 #include <Compositor/OgreCompositorWorkspace.h>
 #include <Compositor/OgreCompositorNodeDef.h>
-#include <Compositor/OgreCompositorPassDef.h>
 #include <Hlms/Unlit/OgreHlmsUnlit.h>
 #include <Hlms/Unlit/OgreHlmsUnlitDatablock.h>
 #include <OgreCamera.h>
@@ -222,18 +221,22 @@ void RenderInterface::RenderGeometry(
 	Rml::Vector2f translation,
 	Rml::TextureHandle texture)
 {
-	auto& material = materials.at(texture);
-	if (material.needsHashing())
+	BaseRenderPass* pass = nullptr;
+	if(this->renderPassSettings.enableStencil)
+		pass = &this->getRenderPass<RenderWithStencilPass>();
+	else
+		pass = &this->getRenderPass<RenderPass>();
+
+	auto& material = this->materials.at(texture);
+	if(material.needsHashing())
 		material.calculateHlmsHash();
-
-    auto& command = m_commandQueue.emplace_back();
-    command.type      = CmdType::DrawGeometry;
-    command.vao       = reinterpret_cast<Ogre::VertexArrayObject*>(geometry);
-    command.datablock = static_cast<Ogre::HlmsUnlitDatablock*>(material.datablock);
-
-    auto translationMat = Ogre::Matrix4::IDENTITY;
-    translationMat.setTrans({ translation.x, translation.y, 0 });
-    command.transform = renderPassSettings.transform * translationMat;
+	pass->queue.push_back({
+		reinterpret_cast<Ogre::VertexArrayObject*>(geometry),
+		translation,
+		material
+	});
+	if(material.textureDependency)
+		pass->textureDependencies.push_back(material.textureDependency);
 }
 void RenderInterface::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
 {
@@ -460,7 +463,7 @@ void RenderInterface::CompositeLayers(
 		sourceLayer = Layer{};
 	}
 	else
-		destinationLayer = this->layerBuffers.at(destination);
+		destinationLayer = this->layerBuffers[destination];
 
 	// Change source layer to copy (if destination != source)
 	if(!sourceLayer.isTaken())
@@ -645,7 +648,7 @@ void RenderInterface::RenderShader(
 	if(material.needsHashing())
 		material.calculateHlmsHash();
 
-	std::vector<QueuedGeometry>* queue = nullptr;
+	Vector<QueuedGeometry>* queue = nullptr;
 	if(this->renderPassSettings.enableStencil)
 		queue = &this->getRenderPass<RenderWithStencilPass>().queue;
 	else

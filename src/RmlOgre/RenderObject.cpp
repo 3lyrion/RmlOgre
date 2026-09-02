@@ -26,6 +26,10 @@ RenderObject::RenderObject(
 	this->mObjectData.mWorldRadius[mObjectData.mIndex] = Ogre::Aabb::BOX_INFINITE.getRadius();
 	this->mObjectData.mQueryFlags[mObjectData.mIndex] = Ogre::SceneManager::QUERY_ENTITY_DEFAULT_MASK;
 
+    this->setCastShadows(false);
+    this->setVisible(false);
+    this->setStatic(true);
+
 	this->setUseIdentityView(true);
 
 	this->mRenderables.push_back(this);
@@ -34,7 +38,7 @@ RenderObject::RenderObject(
 void RenderObject::setVao(Ogre::VertexArrayObject* vao)
 {
 	this->mVaoPerLod[Ogre::VertexPass::VpNormal].push_back(vao);
-	this->mVaoPerLod[Ogre::VertexPass::VpShadow].push_back(vao);
+	//this->mVaoPerLod[Ogre::VertexPass::VpShadow].push_back(vao);
 }
 
 const Ogre::String& RenderObject::getMovableType() const

@@ -26,7 +26,7 @@ public:
 		halfSamples{halfSamples}
 	{}
 
-	void apply(RenderInterface& renderInterface) override;
+	void apply(RenderInterface& renderInterface) final;
 };
 
 class BlurFilterMaker : public FilterMaker
@@ -43,7 +43,7 @@ public:
 
 	BlurFilterMaker();
 	BlurFilter make(float sigma);
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class DropShadowFilter : public Filter
@@ -60,7 +60,7 @@ public:
 		shadowMaterial{shadowMaterial}
 	{}
 
-	void apply(RenderInterface& renderInterface) override;
+	void apply(RenderInterface& renderInterface) final;
 };
 
 class DropShadowFilterMaker : public FilterMaker
@@ -71,7 +71,7 @@ class DropShadowFilterMaker : public FilterMaker
 
 public:
 	DropShadowFilterMaker();
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class OpacityFilterMaker : public FilterMaker
@@ -80,7 +80,7 @@ class OpacityFilterMaker : public FilterMaker
 
 public:
 	OpacityFilterMaker();
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class ColourMatrixFilterMaker : public FilterMaker
@@ -97,49 +97,49 @@ class BrightnessFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class ContrastFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class InvertFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class GrayscaleFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class SepiaFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class HueRotateFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class SaturateFilterMaker : public ColourMatrixFilterMaker
 {
 public:
 	using ColourMatrixFilterMaker::make;
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 class MaskImageFilterMaker : public FilterMaker
@@ -150,7 +150,7 @@ public:
 	MaskImageFilterMaker();
 
 	SingleMaterialFilter make(Ogre::TextureGpu* image);
-	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) override;
+	std::unique_ptr<Filter> make(const Rml::Dictionary& parameters) final;
 };
 
 }

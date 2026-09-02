@@ -1,6 +1,7 @@
 #ifndef NIMBLE_RMLOGRE_BASERENDERPASS_HPP
 #define NIMBLE_RMLOGRE_BASERENDERPASS_HPP
 
+#include "Precompiled.h"
 #include "BasePass.hpp"
 #include "Material.hpp"
 #include "RenderObject.hpp"
@@ -56,10 +57,10 @@ struct RenderPassSettings
 struct BaseRenderPass : BasePass
 {
 	RenderPassSettings settings;
-	std::vector<QueuedGeometry> queue;
+	Vector<QueuedGeometry> queue;
 	Ogre::CompositorChannelVec textureDependencies;
 
-	int numRenderObjects() const override
+	int numRenderObjects() const final
 	{
 		return this->queue.size();
 	}

@@ -19,7 +19,6 @@ void BaseRenderPass::clearNodePass(Ogre::CompositorNode* node, std::size_t passI
 	if(passes.empty())
 		return;
 
-	assert(dynamic_cast<CompositorPassGeometry*>(passes.at(passIndex)));
 	auto* nodePass = static_cast<CompositorPassGeometry*>(passes.at(passIndex));
 	nodePass->renderQueue->clear();
 }
@@ -34,7 +33,6 @@ void BaseRenderPass::writeRenderPass(
 	if(passes.empty())
 		return;
 
-	assert(dynamic_cast<CompositorPassGeometry*>(passes.at(passIndex)));
 	auto* nodePass = static_cast<CompositorPassGeometry*>(passes.at(passIndex));
 
 	for(auto& queueObject : this->queue)

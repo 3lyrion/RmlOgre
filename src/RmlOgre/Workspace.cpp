@@ -214,13 +214,13 @@ void Workspace::buildWorkspace(const std::array<std::size_t, NUM_NODE_TYPES>& re
 	}
 	this->workspaceDef->connectExternal(0, "Rml/End", 1);
 
-	std::array<std::vector<Ogre::IdString>, NUM_NODE_TYPES> nodeTypeNames;
+	std::array<Vector<Ogre::IdString>, NUM_NODE_TYPES> nodeTypeNames;
 	// Start from 1 to skip null passes
 	for(std::size_t i = 1; i < reservedNodes.size(); ++i)
 	{
 		auto& nodeType = this->nodeTypes[i];
 		auto n = reservedNodes[i];
-		std::vector<Ogre::IdString> nodeNames;
+		Vector<Ogre::IdString> nodeNames;
 		nodeNames.reserve(n);
 		for(std::size_t j = 0; j < n; ++j)
 		{
@@ -251,7 +251,7 @@ void Workspace::buildWorkspace(const std::array<std::size_t, NUM_NODE_TYPES>& re
 		auto& nodeType = this->nodeTypes[i];
 		auto& names = nodeTypeNames[i];
 
-		std::vector<Ogre::CompositorNode*> nodes;
+		Vector<Ogre::CompositorNode*> nodes;
 		nodes.reserve(names.size());
 		for(auto& name : names)
 		{
@@ -381,77 +381,80 @@ void Workspace::populateWorkspace(const Passes& passes)
 	for(auto* node : nodeSequence)
 		node->_notifyCleared();
 
-	Ogre::CompositorNode* startNode = this->background_
-		? this->workspace->findNode("Rml/StartWithBackground")
-		: this->workspace->findNode("Rml/Start");
-	Ogre::CompositorNode* endNode = this->workspace->findNode("Rml/End");
+    //if (nodeSequence.empty())
+    //{
+	    Ogre::CompositorNode* startNode = this->background_
+		    ? this->workspace->findNode("Rml/StartWithBackground")
+		    : this->workspace->findNode("Rml/Start");
+	    Ogre::CompositorNode* endNode = this->workspace->findNode("Rml/End");
 
-	nodeSequence.clear();
-	nodeSequence.push_back(startNode);
+	    nodeSequence.clear();
+	    nodeSequence.push_back(startNode);
 
-	if(this->background_)
-		startNode->connectExternalRT(
-			this->workspace->getExternalRenderTargets()[1],
-			0);
-	endNode->connectExternalRT(
-		this->workspace->getExternalRenderTargets()[0],
-		1);
+	    if(this->background_)
+		    startNode->connectExternalRT(
+			    this->workspace->getExternalRenderTargets()[1],
+			    0);
+	    endNode->connectExternalRT(
+		    this->workspace->getExternalRenderTargets()[0],
+		    1);
 
-	using NodesIter = std::vector<Ogre::CompositorNode*>::iterator;
-	std::vector<std::pair<NodesIter, NodesIter>> nodeTypeIters;
-	nodeTypeIters.reserve(this->nodeTypes.size());
-	for(auto& type : this->nodeTypes)
-		nodeTypeIters.push_back({type.nodes.begin(), type.nodes.end()});
+	    using NodesIter = Vector<Ogre::CompositorNode*>::iterator;
+	    Vector<std::pair<NodesIter, NodesIter>> nodeTypeIters;
+	    nodeTypeIters.reserve(this->nodeTypes.size());
+	    for(auto& type : this->nodeTypes)
+		    nodeTypeIters.push_back({type.nodes.begin(), type.nodes.end()});
 
-	NodeConnectionMap extraConnections(this->workspace, this->background_ ? 2 : 1);
+	    NodeConnectionMap extraConnections(this->workspace, this->background_ ? 2 : 1);
 
-	Ogre::CompositorNode* lastActiveNode = startNode;
-	for(auto& pass : passes)
-	{
-		// Skip null passes
-		if(pass.index() == 0)
-			continue;
+	    Ogre::CompositorNode* lastActiveNode = startNode;
+	    for(auto& pass : passes)
+	    {
+		    // Skip null passes
+		    if(pass.index() == 0)
+			    continue;
 
-		auto& nodeTypeIterPair = nodeTypeIters.at(pass.index());
-		auto nodeIter = nodeTypeIterPair.first++;
-		assert(nodeIter != nodeTypeIterPair.second);
+		    auto& nodeTypeIterPair = nodeTypeIters[pass.index()];
+		    auto nodeIter = nodeTypeIterPair.first++;
+		    assert(nodeIter != nodeTypeIterPair.second);
 
-		Ogre::CompositorNode* node = *nodeIter;
-		node->setEnabled(true);
-		connect_nodes(3, lastActiveNode, node);
+		    Ogre::CompositorNode* node = *nodeIter;
+		    node->setEnabled(true);
+		    connect_nodes(3, lastActiveNode, node);
 
-		extraConnections.setCurrentNode(node);
-		std::visit([&](auto& pass)
-		{
-			pass.addExtraConnections(extraConnections);
-		}, pass);
-		extraConnections.setCurrentNode(nullptr);
+		    extraConnections.setCurrentNode(node);
+		    std::visit([&](auto& pass)
+		    {
+			    pass.addExtraConnections(extraConnections);
+		    }, pass);
+		    extraConnections.setCurrentNode(nullptr);
 
-		if(node->_getPasses().empty())
-			node->createPasses();
-		std::visit([&](auto& pass)
-		{
-			pass.writePass(*this, node);
-		}, pass);
+		    if(node->_getPasses().empty())
+			    node->createPasses();
+		    std::visit([&](auto& pass)
+		    {
+			    pass.writePass(*this, node);
+		    }, pass);
 
-		nodeSequence.push_back(node);
-		lastActiveNode = node;
-	}
+		    nodeSequence.push_back(node);
+		    lastActiveNode = node;
+	    }
 
-	lastActiveNode->connectTo(0, endNode, 0);
-	nodeSequence.push_back(endNode);
+	    lastActiveNode->connectTo(0, endNode, 0);
+	    nodeSequence.push_back(endNode);
 
-	// Disable unused nodes
-	for(auto& iters : nodeTypeIters)
-		for(auto iter = iters.first; iter != iters.second; ++iter)
-		{
-			(*iter)->setEnabled(false);
-			nodeSequence.push_back(*iter);
-		}
+	    // Disable unused nodes
+	    for(auto& iters : nodeTypeIters)
+		    for(auto iter = iters.first; iter != iters.second; ++iter)
+		    {
+			    (*iter)->setEnabled(false);
+			    nodeSequence.push_back(*iter);
+		    }
 
-	startNode->createPasses();
-	endNode->createPasses();
-	this->workspace->_notifyBarriersDirty();
+	    startNode->createPasses();
+	    endNode->createPasses();
+	    this->workspace->_notifyBarriersDirty();
+    //}
 
 	this->updateSceneNodes();
 }
@@ -472,12 +475,13 @@ Ogre::SceneNode* Workspace::addSceneNode()
 {
 	assert(this->sceneNodes.capacity() > this->sceneNodes.size());
 
-	this->sceneNodes.emplace_back(
+	auto& node = this->sceneNodes.emplace_back(
 		Ogre::Id::generateNewId<Ogre::Node>(),
 		nullptr,
 		&this->nodeMemoryManager,
 		nullptr);
-	return &this->sceneNodes.back();
+    node.setStatic(true);
+	return &node;
 }
 
 Ogre::String Workspace::getNameStr() const

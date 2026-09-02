@@ -30,7 +30,7 @@ protected:
 	Ogre::Pass            *mPass;
 	Ogre::Camera          *mCamera;
 
-	void analyzeBarriers( const bool bClearBarriers = true ) override;
+	void analyzeBarriers( const bool bClearBarriers = true ) final;
 
 public:
 	CompositorPassRenderQuad(
@@ -39,13 +39,13 @@ public:
 		Ogre::CompositorNode *parentNode,
 		const Ogre::RenderTargetViewDef *rtv
 	);
-	~CompositorPassRenderQuad() override;
+	~CompositorPassRenderQuad() final;
 
 	void setMaterial(Ogre::MaterialPtr material);
 	void setMaterial(Ogre::String material);
 	void setHlmsMaterial(Ogre::String material);
 
-	void execute( const Ogre::Camera *lodCamera ) override;
+	void execute( const Ogre::Camera *lodCamera ) final;
 
 	/// Don't make this const (useful for compile-time multithreading errors)
 	/// Pointer can be null if using HLMS

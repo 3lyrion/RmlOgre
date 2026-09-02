@@ -1,6 +1,8 @@
 #ifndef NIMBLE_RMLOGRE_WORKSPACE_HPP
 #define NIMBLE_RMLOGRE_WORKSPACE_HPP
 
+#include "Precompiled.h"
+
 #include "Pass.hpp"
 #include "RenderObject.hpp"
 #include "ResourcePool.hpp"
@@ -44,7 +46,7 @@ struct NodeType
 
 	Ogre::IdString baseName;
 	ClearFunction clear;
-	std::vector<Ogre::CompositorNode*> nodes;
+	Vector<Ogre::CompositorNode*> nodes;
 
 	void clearAll()
 	{
@@ -60,7 +62,7 @@ struct RenderTexture
 	int index;
 };
 
-using Passes = std::vector<Pass>;
+using Passes = Vector<Pass>;
 
 class Workspace : public Ogre::TextureGpuListener
 {
@@ -76,8 +78,8 @@ class Workspace : public Ogre::TextureGpuListener
 	// Storing Ogre::SceneNode and RenderObject in vectors only possible
 	// because no SceneManager and manually controlling Ogre::RenderQueue.
 	// No parent or child nodes allowed because of storing Ogre::SceneNode in vector
-	std::vector<Ogre::SceneNode> sceneNodes;
-	std::vector<RenderObject, Ogre::STLAllocator<RenderObject, Ogre::AlignAllocPolicy<>>> renderObjects;
+	Vector<Ogre::SceneNode> sceneNodes;
+	Vector<RenderObject> renderObjects;
 
 	Ogre::TextureGpu* output_ = nullptr;
 	Ogre::TextureGpu* background_ = nullptr;
@@ -132,7 +134,7 @@ public:
 		Ogre::TextureGpu* texture,
 		Ogre::TextureGpuListener::Reason reason,
 		void* extraData
-	) override;
+	) final;
 };
 
 }
