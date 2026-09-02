@@ -5,6 +5,43 @@
 
 using namespace RmlOgre;
 
+namespace
+{
+    Ogre::VertexElement2Vec vertexFormat;
+
+    struct GUIVertex
+    {
+        Ogre::Vector2     position;
+        Ogre::ColourValue color;
+        Ogre::Vector2     uv;
+
+        GUIVertex(Rml::Vertex const& v) :
+            position(v.position.x, v.position.y),
+            color   {
+                float(v.colour.red)   / 255.0f,
+                float(v.colour.green) / 255.0f,
+                float(v.colour.blue)  / 255.0f,
+                float(v.colour.alpha) / 255.0f},
+            uv      (v.tex_coord.x, v.tex_coord.y)
+        { }
+
+	    template <class Iterator>
+	    void write(Iterator& iterator) const
+	    {
+		    *(iterator++) = position.x;
+		    *(iterator++) = position.y;
+
+		    *(iterator++) = color.r;
+		    *(iterator++) = color.g;
+		    *(iterator++) = color.b;
+		    *(iterator++) = color.a;
+
+		    *(iterator++) = uv.x;
+		    *(iterator++) = uv.y;
+	    }
+    };
+}
+
 Renderable::Renderable()
 {
     // use identity projection and view matrices
@@ -70,9 +107,12 @@ void Renderable::recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBuffe
         vaoManager->destroyVertexArrayObject( vao );
     }
 
-    mVaoPerLod[0].clear();
-    mVaoPerLod[0].push_back(
-        vaoManager->createVertexArrayObject( { newVertexBuffer }, newIndexBuffer, Ogre::OT_TRIANGLE_LIST ) );
+    auto vao = vaoManager->createVertexArrayObject({ newVertexBuffer }, newIndexBuffer, Ogre::OT_TRIANGLE_LIST);
+
+    mVaoPerLod[Ogre::VertexPass::VpNormal].clear();
+    mVaoPerLod[Ogre::VertexPass::VpNormal].push_back(vao);
+    mVaoPerLod[Ogre::VertexPass::VpShadow].clear();
+    mVaoPerLod[Ogre::VertexPass::VpShadow].push_back(vao);
 }
 //-----------------------------------------------------------------------------
 void Renderable::destroyBuffers( Ogre::VaoManager *vaoManager )
@@ -98,43 +138,43 @@ void Renderable::destroyBuffers( Ogre::VaoManager *vaoManager )
     }
 }
 //-----------------------------------------------------------------------------
-void Renderable::updateVertexData( const Rml::Vertex *vtxBuf, const int *idxBuf,
-                                        unsigned int vtxCount, unsigned int idxCount,
-                                        Ogre::VaoManager *vaoManager )
+void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, Ogre::VaoManager *vaoManager)
 {
     Ogre::VertexBufferPacked *vertexBuffer = 0;
     Ogre::IndexBufferPacked *indexBuffer = 0;
-    if( vtxCount > getVertexCount() )
+    if (vertices.size() > getVertexCount())
     {
-        Ogre::VertexElement2Vec vertexElements;
-        vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_POSITION ) );
-        vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_UBYTE4_NORM, Ogre::VES_DIFFUSE ) );
-        vertexElements.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES ) );
+        if (vertexFormat.empty())
+        {
+            vertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_POSITION ) );
+            vertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT4, Ogre::VES_DIFFUSE ) );
+            vertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES ) );
+        }
 
-        vertexBuffer = vaoManager->createVertexBuffer( vertexElements, size_t( vtxCount ),
-                                                       Ogre::BT_DYNAMIC_PERSISTENT, nullptr, false );
+	    auto vertexSize = vaoManager->calculateVertexSize(vertexFormat);
+	    auto* ogreVertices = reinterpret_cast<float*>(OGRE_MALLOC_SIMD(
+		    vertices.size() * vertexSize,
+		    Ogre::MEMCATEGORY_GEOMETRY));
+	    auto verticesIter = ogreVertices;
+	    for (auto& v : vertices)
+		    GUIVertex{v}.write(verticesIter);
+
+        vertexBuffer = vaoManager->createVertexBuffer(vertexFormat, vertices.size(),Ogre::BT_DEFAULT, ogreVertices, true);
     }
-    if( idxCount > getIndexCount() )
+    if (indices.size() > getIndexCount())
     {
-        indexBuffer = vaoManager->createIndexBuffer( Ogre::IndexBufferPacked::IT_32BIT, size_t( idxCount ),
-                                                     Ogre::BT_DYNAMIC_PERSISTENT, nullptr, false );
+	    auto* ogreIndices = reinterpret_cast<Ogre::uint16*>(OGRE_MALLOC_SIMD(
+		    indices.size() * sizeof(Ogre::uint16),
+		    Ogre::MEMCATEGORY_GEOMETRY));
+
+	    for (std::size_t i = 0; i < indices.size(); ++i)
+		    ogreIndices[i] = indices[i];
+
+        indexBuffer = vaoManager->createIndexBuffer(Ogre::IndexBufferPacked::IT_16BIT, indices.size(), Ogre::BT_IMMUTABLE, ogreIndices, true);
     }
 
-    if( vertexBuffer || indexBuffer )
-        recreateBuffers( vaoManager, vertexBuffer, indexBuffer );
-
-    auto *vao = mVaoPerLod[0][0];
-    vao->setPrimitiveRange( 0u, idxCount );
-
-    void *vtxDst = vao->getBaseVertexBuffer()->map( 0u, vtxCount );
-    void *idxDst = vao->getIndexBuffer()->map( 0u, idxCount );
-
-    // Copy all vertices
-    memcpy( vtxDst, vtxBuf, vtxCount * sizeof( Rml::Vertex ) );
-    memcpy( idxDst, idxBuf, idxCount * sizeof( int ) );
-
-    vao->getBaseVertexBuffer()->unmap( Ogre::UO_KEEP_PERSISTENT, 0u, vtxCount );
-    vao->getIndexBuffer()->unmap( Ogre::UO_KEEP_PERSISTENT, 0u, idxCount );
+    if (vertexBuffer || indexBuffer)
+        recreateBuffers(vaoManager, vertexBuffer, indexBuffer);
 }
 //-----------------------------------------------------------------------------
 void Renderable::getWorldTransforms( Ogre::Matrix4 *xform ) const

@@ -24,8 +24,7 @@ public:
     void destroyBuffers( Ogre::VaoManager *vaoManager );
 
     // builds the vertex buffer
-    void updateVertexData( const Rml::Vertex *vtxBuf, const int *idxBuf, unsigned int vtxCount,
-                            unsigned int idxCount, Ogre::VaoManager *vaoManager );
+    void updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, Ogre::VaoManager *vaoManager );
 
     // Overrides from Renderable
     void getWorldTransforms( Ogre::Matrix4 *xform ) const override;

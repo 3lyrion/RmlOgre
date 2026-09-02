@@ -12,8 +12,24 @@ class Renderable;
 
 class Manager : public Rml::RenderInterface
 {
+    enum class ClipMode : uint8_t
+    {
+        //Set = Rml::ClipMaskOperation::Set,
+        //SetInverse = Rml::ClipMaskOperation::SetInverse,
+        //Intersect = Rml::ClipMaskOperation::Intersect
+        None = 0,
+        Test = 1,
+        SetMask = 2
+    };
+
     typedef std::vector<Renderable*>                    RenderableVec;
     typedef std::map<Ogre::TextureGpu* , RenderableVec> RenderableMap;
+
+    enum class CmdType : uint8_t
+    {
+        Geometry = 0,
+        ClipMask
+    };
 
     struct Command
     {
@@ -34,7 +50,9 @@ class Manager : public Rml::RenderInterface
         Ogre::TextureGpu* texture;
         Renderable* renderable;
         Ogre::Vector4 scissor;
+        CmdType type;
         bool scissorEnabled;
+        float depthZ = 0.0f;
         Ogre::Matrix4 transform;
     };
 
@@ -48,10 +66,17 @@ class Manager : public Rml::RenderInterface
     //uint32_t mCurrentIndexCount = 0;
     Ogre::Vector4 mCurrentScissor = { 0.0f, 0.0f, 1.0f, 1.0f };
     bool mScissorEnabled = false;
+    bool mClipMaskEnabled = false;
+    float mCurrentDepthZ = 0.0f;
     Ogre::Matrix4 mCurrentTransform = Ogre::Matrix4::IDENTITY;
+
 
     Ogre::IndirectBufferPacked* mIndirectBuffer;
     Ogre::CommandBuffer*        mCommandBuffer;
+
+    Ogre::HlmsSamplerblock m_samplerblock;
+    Ogre::HlmsMacroblock   m_macroblock;
+    Ogre::HlmsBlendblock   m_blendblock;
 
     Ogre::MovableObject *mDummyMovableObject;
     Ogre::SceneManager*  m_sceneManager{};
@@ -112,7 +137,6 @@ public:
 
 	void SetTransform(const Rml::Matrix4f* transform) override;
 
-    /*
 	void EnableClipMask(bool enable) override;
 	void RenderToClipMask(
 		Rml::ClipMaskOperation operation,
@@ -129,14 +153,15 @@ public:
 	) override;
 	void PopLayer() override;
 
+	Rml::TextureHandle SaveLayerAsTexture() override;
+	Rml::CompiledFilterHandle SaveLayerAsMaskImage() override;
+
+    
 	Rml::CompiledFilterHandle CompileFilter(
 		const Rml::String& name,
 		const Rml::Dictionary& parameters
 	) override;
 	void ReleaseFilter(Rml::CompiledFilterHandle filter) override;
-
-	Rml::TextureHandle SaveLayerAsTexture() override;
-	Rml::CompiledFilterHandle SaveLayerAsMaskImage() override;
 
 	Rml::CompiledShaderHandle CompileShader(
 		const Rml::String& name,
@@ -149,7 +174,7 @@ public:
 		Rml::TextureHandle texture
 	) override;
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
-    */
+    
 };
 
 }  // namespace RmlOgre
