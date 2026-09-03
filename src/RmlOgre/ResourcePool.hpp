@@ -16,7 +16,7 @@ class ResourcePool
 {
 	Vector<T> resources;
 	std::deque<std::size_t> unused_;
-	std::unordered_map<T, std::size_t> used_;
+	Rml::SmallUnorderedMap<T, std::size_t> used_;
 
 public:
 	using Iterator = typename decltype(resources)::iterator;

@@ -19,7 +19,7 @@ namespace RmlOgre
             Ogre::CompositorPassDef( Ogre::PASS_CUSTOM, parentTargetDef ),
             mSetsResolution( true )
         {
-            mProfilingId = "Dear Imgui";
+            mProfilingId = "RmlUi";
         }
     };
 

@@ -68,7 +68,7 @@ void CompositorPass::execute( const Ogre::Camera* lodCamera )
 //-----------------------------------------------------------------------------------
 bool CompositorPass::notifyRecreated( const Ogre::TextureGpu* channel )
 {
-    bool usedByUs = CompositorPass::notifyRecreated( channel );
+    bool usedByUs = Ogre::CompositorPass::notifyRecreated( channel );
 
     //if( !usedByUs )
     //{

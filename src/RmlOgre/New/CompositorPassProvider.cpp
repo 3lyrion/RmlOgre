@@ -59,7 +59,7 @@ void CompositorPassProvider::translateCustomPass( Ogre::ScriptCompiler *compiler
                                                         Ogre::IdString customId,
                                                         Ogre::CompositorPassDef *customPassDef )
 {
-    if( customId != "dear_imgui" )
+    //if( customId != "rmlui" )
         return;  // Custom pass not created by us
 
     CompositorPassDef *imguiDef = static_cast<CompositorPassDef *>( customPassDef );

@@ -54,14 +54,14 @@ namespace
     void createBlankDatablock(Ogre::HlmsMacroblock& macroblock, Ogre::HlmsBlendblock& blendblock)
     {
         auto hlms = static_cast<Ogre::HlmsUnlit*>(Ogre::Root::getSingleton().getHlmsManager()->getHlms(Ogre::HLMS_UNLIT));
-		BlankDatablock = static_cast<Ogre::HlmsUnlitDatablock*>(hlms->createDatablock(
-			"NoTexture",
-			"NoTexture",
-			macroblock,
-			blendblock,
-			Ogre::HlmsParamVec())
-		);
-	    BlankDatablock->setUseColour(true);
+        BlankDatablock = static_cast<Ogre::HlmsUnlitDatablock*>(hlms->createDatablock(
+            "NoTexture",
+            "NoTexture",
+            macroblock,
+            blendblock,
+            Ogre::HlmsParamVec())
+        );
+        BlankDatablock->setUseColour(true);
     }
 
     void createBlankTexture()
@@ -132,14 +132,14 @@ Manager::Manager() :
     m_samplerblock.setFiltering(Ogre::TFO_NONE);
     m_samplerblock.setAddressingMode(Ogre::TAM_CLAMP);
 
-	m_blendblock.mBlendOperation = Ogre::SceneBlendOperation::SBO_ADD;
-	m_blendblock.mDestBlendFactor = Ogre::SceneBlendFactor::SBF_ONE_MINUS_SOURCE_ALPHA;
-	m_blendblock.mSourceBlendFactor = Ogre::SceneBlendFactor::SBF_ONE;
+    m_blendblock.mBlendOperation = Ogre::SceneBlendOperation::SBO_ADD;
+    m_blendblock.mDestBlendFactor = Ogre::SceneBlendFactor::SBF_ONE_MINUS_SOURCE_ALPHA;
+    m_blendblock.mSourceBlendFactor = Ogre::SceneBlendFactor::SBF_ONE;
 
-	m_macroblock.mScissorTestEnabled = true;
-	m_macroblock.mDepthCheck = true;
-	m_macroblock.mDepthWrite = true;
-	m_macroblock.mCullMode = Ogre::CULL_NONE;
+    m_macroblock.mScissorTestEnabled = true;
+    m_macroblock.mDepthCheck = true;
+    m_macroblock.mDepthWrite = true;
+    m_macroblock.mCullMode = Ogre::CULL_NONE;
 
     createBlankTexture();
 }
@@ -174,7 +174,7 @@ void Manager::destroyAllResources()
             renderable->destroyBuffers( vaoManager );
             delete renderable;
         }
-        const Ogre::String materialName = "!!OgreImgui_" + itor->first->getName().getReleaseText();
+        const Ogre::String materialName = "!!OgreRmlUi_" + itor->first->getName().getReleaseText();
         Ogre::MaterialPtr material = Ogre::MaterialManager::getSingleton().getByName(
             materialName, Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME );
         Ogre::MaterialManager::getSingleton().remove( material );
@@ -196,10 +196,10 @@ void Manager::destroyAllResources()
 Ogre::Matrix4 Manager::getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                            const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const
 {
-    Ogre::Matrix4 projectionMatrix( 2.0f / vpWidth, 0.0f, 0.0f, -1.0f,  //
-                              0.0f, -2.0f / vpHeight, 0.0f, 1.0f,  //
-                              0.0f, 0.0f, -1.0f, 0.0f,                     //
-                              0.0f, 0.0f, 0.0f, 1.0f );
+    Ogre::Matrix4 projectionMatrix{ 2.0f / vpWidth, 0.0f            , 0.0f , -1.0f,
+                                    0.0f          , -2.0f / vpHeight, 0.0f , 1.0f ,
+                                    0.0f          , 0.0f            , -1.0f, 0.0f ,
+                                    0.0f          , 0.0f            , 0.0f , 1.0f  };
     // Still need to take RS depth into account.
     rs->_convertProjectionMatrix( projectionMatrix, projectionMatrix );
 #if OGRE_NO_VIEWPORT_ORIENTATIONMODE == 0
@@ -713,7 +713,6 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
         else
             indirectDraw = mIndirectBuffer->getSwBufferPtr();
 
-        // Заполняем CbDrawIndexed для каждой команды RmlUi
         for( size_t i = 0; i < numNeededDraws; ++i )
         {
             auto* renderable = mDrawCmds[i].renderable;
@@ -730,7 +729,7 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
             cmd->baseInstance = 0u;
         }
 
-        if( supportsIndirectBuffers )
+        if( indirectDraw && supportsIndirectBuffers )
             mIndirectBuffer->unmap( Ogre::UO_KEEP_PERSISTENT );
     }
 
@@ -793,10 +792,10 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
 
         Ogre::QueuedRenderable queuedRenderable( 0u, renderable, mDummyMovableObject );
 
-        if( cmd.texture )
-        {
-            pass->getTextureUnitState(0u)->setTexture( cmd.texture );
-        }
+        //if( cmd.texture )
+        //{
+        //    pass->getTextureUnitState(0u)->setTexture( cmd.texture );
+        //}
 
         //Ogre::Matrix4 finalProjMatrix = projMatrix * cmd.transform;
         //pass->getVertexProgramParameters()->setNamedConstant( "ProjectionMatrix", finalProjMatrix );
@@ -880,7 +879,7 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
     renderSystem->_addMetrics( stats );
 
     // There was nothing for RmlUi to draw. We must still prepare the window for presenting.
-    if( bWasReadyForPresent && !stats.mDrawCount )
+    if( bWasReadyForPresent /*&& !stats.mDrawCount*/ )
     {
         Ogre::Vector4 scissors( 0, 0, 1, 1 );
         renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
@@ -973,7 +972,7 @@ void Manager::RenderGeometry(
         if (!BlankMaterial)
             createBlankMaterial(m_macroblock, m_blendblock);
 
-		cmd.renderable->setMaterial(BlankMaterial);
+        cmd.renderable->setMaterial(BlankMaterial);
 
         //if (!BlankDatablock)
         //    createBlankDatablock(m_macroblock, m_blendblock);
@@ -1097,9 +1096,9 @@ void Manager::EnableClipMask(bool enable)
 }
 
 void Manager::RenderToClipMask(
-	Rml::ClipMaskOperation operation,
-	Rml::CompiledGeometryHandle geometry,
-	Rml::Vector2f translation)
+    Rml::ClipMaskOperation operation,
+    Rml::CompiledGeometryHandle geometry,
+    Rml::Vector2f translation)
 {
     mCurrentDepthZ += 0.02f;
 
@@ -1117,7 +1116,7 @@ void Manager::RenderToClipMask(
     if (!BlankMaterial)
         createBlankMaterial(m_macroblock, m_blendblock);
 
-	cmd.renderable->setMaterial(BlankMaterial);
+    cmd.renderable->setMaterial(BlankMaterial);
 }
 
 Rml::LayerHandle Manager::PushLayer()
@@ -1125,146 +1124,146 @@ Rml::LayerHandle Manager::PushLayer()
     int a = 1;
     return {};
 
-	//Layer oldTopLayer{this->addConnection(), -1};
-	//this->putLayerBuffer(-1, oldTopLayer);
-	//Layer newLayer = this->acquireLayerBuffer();
-	//this->passes.push_back(SwapPass(newLayer.connectionId, oldTopLayer.connectionId));
-	//this->passes.push_back(StartLayerPass{});
+    //Layer oldTopLayer{this->addConnection(), -1};
+    //this->putLayerBuffer(-1, oldTopLayer);
+    //Layer newLayer = this->acquireLayerBuffer();
+    //this->passes.push_back(SwapPass(newLayer.connectionId, oldTopLayer.connectionId));
+    //this->passes.push_back(StartLayerPass{});
 
-	//return Rml::LayerHandle(this->numActiveLayers - 1);
+    //return Rml::LayerHandle(this->numActiveLayers - 1);
 }
 void Manager::CompositeLayers(
-	Rml::LayerHandle source,
-	Rml::LayerHandle destination,
-	Rml::BlendMode blend_mode,
-	Rml::Span<const Rml::CompiledFilterHandle> filters)
+    Rml::LayerHandle source,
+    Rml::LayerHandle destination,
+    Rml::BlendMode blend_mode,
+    Rml::Span<const Rml::CompiledFilterHandle> filters)
 {
     int a = 1;
 
-	//Layer topLayer{this->addConnection(), -1};
-	//Layer sourceLayer;
-	//Layer destinationLayer;
+    //Layer topLayer{this->addConnection(), -1};
+    //Layer sourceLayer;
+    //Layer destinationLayer;
 
-	//bool sourceIsTopLayer = static_cast<int>(source) == this->numActiveLayers - 1;
-	//bool destinationIsTopLayer = static_cast<int>(destination) == this->numActiveLayers - 1;
+    //bool sourceIsTopLayer = static_cast<int>(source) == this->numActiveLayers - 1;
+    //bool destinationIsTopLayer = static_cast<int>(destination) == this->numActiveLayers - 1;
 
-	//Layer tempLayer = this->acquireLayerBuffer();
-	//if(sourceIsTopLayer)
-	//{
-	//	topLayer.copyPass = this->passes.size();
-	//	this->passes.push_back(CopyPass(tempLayer.connectionId, topLayer.connectionId));
-	//}
-	//else
-	//{
-	//	this->passes.push_back(SwapPass(this->getLayerBuffer(source).connectionId, topLayer.connectionId));
-	//	sourceLayer = Layer{this->addConnection(), static_cast<int>(this->passes.size())};
-	//	this->passes.push_back(CopyPass(tempLayer.connectionId, sourceLayer.connectionId));
-	//}
+    //Layer tempLayer = this->acquireLayerBuffer();
+    //if(sourceIsTopLayer)
+    //{
+    //	topLayer.copyPass = this->passes.size();
+    //	this->passes.push_back(CopyPass(tempLayer.connectionId, topLayer.connectionId));
+    //}
+    //else
+    //{
+    //	this->passes.push_back(SwapPass(this->getLayerBuffer(source).connectionId, topLayer.connectionId));
+    //	sourceLayer = Layer{this->addConnection(), static_cast<int>(this->passes.size())};
+    //	this->passes.push_back(CopyPass(tempLayer.connectionId, sourceLayer.connectionId));
+    //}
 
-	//if(destinationIsTopLayer)
-	//{
-	//	destinationLayer = topLayer;
-	//	topLayer = Layer{};
-	//}
-	//else if(source == destination)
-	//{
-	//	destinationLayer = sourceLayer;
-	//	sourceLayer = Layer{};
-	//}
-	//else
-	//	destinationLayer = this->layerBuffers.at(destination);
+    //if(destinationIsTopLayer)
+    //{
+    //	destinationLayer = topLayer;
+    //	topLayer = Layer{};
+    //}
+    //else if(source == destination)
+    //{
+    //	destinationLayer = sourceLayer;
+    //	sourceLayer = Layer{};
+    //}
+    //else
+    //	destinationLayer = this->layerBuffers.at(destination);
 
-	//// Change source layer to copy (if destination != source)
-	//if(!sourceLayer.isTaken())
-	//	this->putLayerBuffer(source, sourceLayer);
-
-
-	//for(auto filter : filters)
-	//	this->filters.at(filter)->apply(*this);
+    //// Change source layer to copy (if destination != source)
+    //if(!sourceLayer.isTaken())
+    //	this->putLayerBuffer(source, sourceLayer);
 
 
-	//tempLayer = Layer{this->addConnection(), -1};
-	//if(this->renderPassSettings.enableStencil)
-	//{
-	//	this->passes.push_back(CompositeWithStencilPass(
-	//		destinationLayer.connectionId,
-	//		tempLayer.connectionId,
-	//		blend_mode == Rml::BlendMode::Replace,
-	//		this->renderPassSettings));
-	//}
-	//else
-	//{
-	//	this->passes.push_back(CompositePass(
-	//		destinationLayer.connectionId,
-	//		tempLayer.connectionId,
-	//		blend_mode == Rml::BlendMode::Replace,
-	//		this->renderPassSettings));
-	//}
-	//this->releaseLayerBuffer(tempLayer);
+    //for(auto filter : filters)
+    //	this->filters.at(filter)->apply(*this);
 
-	//if(!destinationIsTopLayer)
-	//{
-	//	destinationLayer = Layer{this->addConnection(), static_cast<int>(this->passes.size())};
-	//	this->passes.push_back(SwapPass(topLayer.connectionId, destinationLayer.connectionId));
-	//	this->putLayerBuffer(destination, destinationLayer);
-	//	this->putLayerBuffer(-1, Layer{-1, topLayer.copyPass});
-	//}
+
+    //tempLayer = Layer{this->addConnection(), -1};
+    //if(this->renderPassSettings.enableStencil)
+    //{
+    //	this->passes.push_back(CompositeWithStencilPass(
+    //		destinationLayer.connectionId,
+    //		tempLayer.connectionId,
+    //		blend_mode == Rml::BlendMode::Replace,
+    //		this->renderPassSettings));
+    //}
+    //else
+    //{
+    //	this->passes.push_back(CompositePass(
+    //		destinationLayer.connectionId,
+    //		tempLayer.connectionId,
+    //		blend_mode == Rml::BlendMode::Replace,
+    //		this->renderPassSettings));
+    //}
+    //this->releaseLayerBuffer(tempLayer);
+
+    //if(!destinationIsTopLayer)
+    //{
+    //	destinationLayer = Layer{this->addConnection(), static_cast<int>(this->passes.size())};
+    //	this->passes.push_back(SwapPass(topLayer.connectionId, destinationLayer.connectionId));
+    //	this->putLayerBuffer(destination, destinationLayer);
+    //	this->putLayerBuffer(-1, Layer{-1, topLayer.copyPass});
+    //}
 }
 
 void Manager::PopLayer()
 {
     int a = 1;
-	//Layer poppedLayer = this->getLayerBuffer(-1);
-	//Layer newTopLayer = this->getLayerBuffer(-2);
-	//auto* lastPass = std::get_if<SwapPass>(&this->passes.back());
-	//if(lastPass)
-	//{
-	//	CopyPass* copyPass = nullptr;
-	//	if(poppedLayer.copyPass != -1)
-	//		copyPass = std::get_if<CopyPass>(&this->passes[poppedLayer.copyPass]);
-	//	if(copyPass && lastPass->swapIn == copyPass->copyOut)
-	//	{
-	//		this->releaseLayerBuffer(Layer{copyPass->copyIn, -1});
-	//		this->passes[poppedLayer.copyPass] = NullPass{};
-	//		if(newTopLayer.connectionId == lastPass->swapOut)
-	//			this->passes.pop_back();
-	//		else
-	//			this->passes.back() = SwapPass(newTopLayer.connectionId, lastPass->swapOut);
-	//	}
-	//	else
-	//	{
-	//		this->releaseLayerBuffer(Layer{lastPass->swapIn, -1});
-	//		if(newTopLayer.connectionId == lastPass->swapOut)
-	//			this->passes.pop_back();
-	//		else
-	//			this->passes.back() = SwapPass(newTopLayer.connectionId, lastPass->swapOut);
-	//	}
-	//}
-	//else
-	//{
-	//	Layer poppedLayer{this->addConnection(), -1};
-	//	this->releaseLayerBuffer(poppedLayer);
-	//	this->passes.push_back(SwapPass{newTopLayer.connectionId, poppedLayer.connectionId});
-	//}
+    //Layer poppedLayer = this->getLayerBuffer(-1);
+    //Layer newTopLayer = this->getLayerBuffer(-2);
+    //auto* lastPass = std::get_if<SwapPass>(&this->passes.back());
+    //if(lastPass)
+    //{
+    //	CopyPass* copyPass = nullptr;
+    //	if(poppedLayer.copyPass != -1)
+    //		copyPass = std::get_if<CopyPass>(&this->passes[poppedLayer.copyPass]);
+    //	if(copyPass && lastPass->swapIn == copyPass->copyOut)
+    //	{
+    //		this->releaseLayerBuffer(Layer{copyPass->copyIn, -1});
+    //		this->passes[poppedLayer.copyPass] = NullPass{};
+    //		if(newTopLayer.connectionId == lastPass->swapOut)
+    //			this->passes.pop_back();
+    //		else
+    //			this->passes.back() = SwapPass(newTopLayer.connectionId, lastPass->swapOut);
+    //	}
+    //	else
+    //	{
+    //		this->releaseLayerBuffer(Layer{lastPass->swapIn, -1});
+    //		if(newTopLayer.connectionId == lastPass->swapOut)
+    //			this->passes.pop_back();
+    //		else
+    //			this->passes.back() = SwapPass(newTopLayer.connectionId, lastPass->swapOut);
+    //	}
+    //}
+    //else
+    //{
+    //	Layer poppedLayer{this->addConnection(), -1};
+    //	this->releaseLayerBuffer(poppedLayer);
+    //	this->passes.push_back(SwapPass{newTopLayer.connectionId, poppedLayer.connectionId});
+    //}
 }
 
 Rml::CompiledFilterHandle Manager::CompileFilter(
-	const Rml::String& name,
-	const Rml::Dictionary& parameters)
+    const Rml::String& name,
+    const Rml::Dictionary& parameters)
 {
     return {};
-	//auto maker = this->filterMakers.find(name);
-	//if(maker == this->filterMakers.end())
-	//		return {};
+    //auto maker = this->filterMakers.find(name);
+    //if(maker == this->filterMakers.end())
+    //		return {};
 
-	//auto filter = maker->second->make(parameters);
-	//auto handle = this->filters.insert(std::move(filter));
-	//return handle;
+    //auto filter = maker->second->make(parameters);
+    //auto handle = this->filters.insert(std::move(filter));
+    //return handle;
 }
 
 void Manager::ReleaseFilter(Rml::CompiledFilterHandle filter)
 {
-	int a = 1;
+    int a = 1;
 }
 
 Rml::TextureHandle Manager::SaveLayerAsTexture()
@@ -1278,22 +1277,22 @@ Rml::CompiledFilterHandle Manager::SaveLayerAsMaskImage()
 }
 
 Rml::CompiledShaderHandle Manager::CompileShader(
-	const Rml::String& name,
-	const Rml::Dictionary& parameters)
+    const Rml::String& name,
+    const Rml::Dictionary& parameters)
 {
     return {};
 }
 
 void Manager::RenderShader(
-	Rml::CompiledShaderHandle shader,
-	Rml::CompiledGeometryHandle geometry,
-	Rml::Vector2f translation,
-	Rml::TextureHandle texture)
+    Rml::CompiledShaderHandle shader,
+    Rml::CompiledGeometryHandle geometry,
+    Rml::Vector2f translation,
+    Rml::TextureHandle texture)
 {
-	int a = 1;
+    int a = 1;
 }
 
 void Manager::ReleaseShader(Rml::CompiledShaderHandle shader)
 {
-	int a = 1;
+    int a = 1;
 }

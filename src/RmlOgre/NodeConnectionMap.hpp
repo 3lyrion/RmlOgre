@@ -1,9 +1,7 @@
 #ifndef NIMBLE_RMLOGRE_NODECONNECTIONMAP_HPP
 #define NIMBLE_RMLOGRE_NODECONNECTIONMAP_HPP
 
-#include <unordered_map>
-#include <vector>
-
+#include <RmlUi/Core.h>
 
 namespace Ogre {
 
@@ -16,11 +14,11 @@ namespace nimble::RmlOgre {
 
 class NodeConnectionMap
 {
-	Ogre::CompositorWorkspace* workspace;
-	Ogre::CompositorNode* currentNode;
+    Ogre::CompositorWorkspace* workspace;
+    Ogre::CompositorNode* currentNode{};
 
 	int externalChannelOffset = 0;
-	std::unordered_map<int, std::pair<Ogre::CompositorNode*, int>> outMap;
+    Rml::SmallUnorderedMap<int, std::pair<Ogre::CompositorNode*, int>> outMap;
 
 public:
 	NodeConnectionMap(Ogre::CompositorWorkspace* workspace, int externalChannelOffset) :

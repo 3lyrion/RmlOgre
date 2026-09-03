@@ -111,8 +111,6 @@ void Renderable::recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBuffe
 
     mVaoPerLod[Ogre::VertexPass::VpNormal].clear();
     mVaoPerLod[Ogre::VertexPass::VpNormal].push_back(vao);
-    mVaoPerLod[Ogre::VertexPass::VpShadow].clear();
-    mVaoPerLod[Ogre::VertexPass::VpShadow].push_back(vao);
 }
 //-----------------------------------------------------------------------------
 void Renderable::destroyBuffers( Ogre::VaoManager *vaoManager )
@@ -159,18 +157,17 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
 	    for (auto& v : vertices)
 		    GUIVertex{v}.write(verticesIter);
 
-        vertexBuffer = vaoManager->createVertexBuffer(vertexFormat, vertices.size(),Ogre::BT_DEFAULT, ogreVertices, true);
+        vertexBuffer = vaoManager->createVertexBuffer(vertexFormat, vertices.size(), Ogre::BT_DEFAULT, ogreVertices, false);
     }
     if (indices.size() > getIndexCount())
     {
 	    auto* ogreIndices = reinterpret_cast<Ogre::uint16*>(OGRE_MALLOC_SIMD(
 		    indices.size() * sizeof(Ogre::uint16),
 		    Ogre::MEMCATEGORY_GEOMETRY));
-
 	    for (std::size_t i = 0; i < indices.size(); ++i)
 		    ogreIndices[i] = indices[i];
 
-        indexBuffer = vaoManager->createIndexBuffer(Ogre::IndexBufferPacked::IT_16BIT, indices.size(), Ogre::BT_IMMUTABLE, ogreIndices, true);
+        indexBuffer = vaoManager->createIndexBuffer(Ogre::IndexBufferPacked::IT_16BIT, indices.size(), Ogre::BT_IMMUTABLE, ogreIndices, false);
     }
 
     if (vertexBuffer || indexBuffer)
