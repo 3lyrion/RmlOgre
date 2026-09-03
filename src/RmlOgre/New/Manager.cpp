@@ -100,7 +100,7 @@ namespace
         //BlankTexture->scheduleTransitionTo(Ogre::GpuResidency::Resident, imagePtr, true);
     }
 
-    void createBlankMaterial(Ogre::HlmsMacroblock& macroblock, Ogre::HlmsBlendblock& blendblock)
+    void createBlankMaterial(Ogre::HlmsSamplerblock& samplerblock, Ogre::HlmsMacroblock& macroblock, Ogre::HlmsBlendblock& blendblock)
     {
         const Ogre::String materialName = "!!OgreRmlUi_BlankTexture";
     
@@ -111,6 +111,7 @@ namespace
         pass->setFragmentProgram( "imgui/FP" );
         pass->setVertexProgram( "imgui/VP" );
 
+        pass->setSamplerblock( samplerblock );
         pass->setBlendblock( blendblock );
         pass->setMacroblock( macroblock );
 
@@ -137,8 +138,8 @@ Manager::Manager() :
     m_blendblock.mSourceBlendFactor = Ogre::SceneBlendFactor::SBF_ONE;
 
     m_macroblock.mScissorTestEnabled = true;
-    m_macroblock.mDepthCheck = true;
-    m_macroblock.mDepthWrite = true;
+    m_macroblock.mDepthCheck = false;
+    m_macroblock.mDepthWrite = false;
     m_macroblock.mCullMode = Ogre::CULL_NONE;
 
     createBlankTexture();
@@ -508,22 +509,22 @@ Ogre::MaterialPtr Manager::createMaterialFor( Ogre::TextureGpu* texture )
     Ogre::MaterialPtr rmlMaterial = Ogre::MaterialManager::getSingleton().getByName(
         materialName, Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME );
 
-    if( rmlMaterial )
+    if (rmlMaterial)
         return rmlMaterial;
 
     rmlMaterial = Ogre::MaterialManager::getSingleton().create(
         materialName, Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME );
 
     Ogre::Pass *pass = rmlMaterial->getTechnique( 0 )->getPass( 0 );
-    pass->setFragmentProgram( "imgui/FP" );
-    pass->setVertexProgram( "imgui/VP" );
+    pass->setFragmentProgram("imgui/FP");
+    pass->setVertexProgram("imgui/VP");
 
     pass->setSamplerblock(m_samplerblock);
-    pass->setBlendblock( m_blendblock );
-    pass->setMacroblock( m_macroblock );
+    pass->setBlendblock(m_blendblock);
+    pass->setMacroblock(m_macroblock);
 
     auto textureUnit = pass->createTextureUnitState();
-    textureUnit->setTexture( texture );
+    textureUnit->setTexture(texture);
 
     return rmlMaterial;
 }
@@ -751,6 +752,8 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
     const Ogre::Matrix4 projMatrix =
         getProjectionMatrix( renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera, float(vpWidth), float(vpHeight));
 
+    //renderSystem->setStencilBufferParams(mStencilRefValue, renderSystem->getStencilBufferParams());
+
     for( size_t i = 0; i < numNeededDraws; ++i )
     {
         auto& cmd = mDrawCmds[i];
@@ -786,6 +789,45 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
             }
         }
 
+        Ogre::StencilParams stencil;
+        if (cmd.type == CmdType::Geometry)
+        {
+            if (cmd.clipMaskOp != ClipMaskOperation::None)
+            {
+                stencil.enabled = true;
+                stencil.stencilFront.compareOp = Ogre::CMPF_EQUAL;
+                stencil.stencilFront.stencilPassOp = Ogre::SOP_KEEP;
+                stencil.stencilBack = stencil.stencilFront;
+            }
+        }
+        else if (cmd.type == CmdType::ClipMask)
+        {
+            switch (cmd.clipMaskOp)
+            {
+            case ClipMaskOperation::Set:
+                stencil.enabled = true;
+                stencil.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
+                stencil.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
+                stencil.stencilBack = stencil.stencilFront;
+            break;
+
+            case ClipMaskOperation::Intersect:
+                stencil.enabled = true;
+                stencil.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
+                stencil.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
+                stencil.stencilBack = stencil.stencilFront;
+            break;
+
+            case ClipMaskOperation::SetInverse:
+                stencil.enabled = true;
+                stencil.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
+                stencil.stencilFront.stencilPassOp = Ogre::SOP_INVERT;
+                stencil.stencilBack = stencil.stencilFront;
+            break;
+            }
+        }
+        renderSystem->setStencilBufferParams(cmd.stencilValue, stencil);
+        
         renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
                                                  &scissors, 1u, false, false );
         renderSystem->executeRenderPassDescriptorDelayedActions();
@@ -800,37 +842,15 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
         //Ogre::Matrix4 finalProjMatrix = projMatrix * cmd.transform;
         //pass->getVertexProgramParameters()->setNamedConstant( "ProjectionMatrix", finalProjMatrix );
 
+
         //Ogre::HlmsBlendblock blendblock = *pass->getBlendblock();
 
         //Ogre::HlmsMacroblock macroblock;
         //macroblock.mCullMode = Ogre::CULL_NONE;
         //macroblock.mScissorTestEnabled = cmd.scissorEnabled;
 
-        //if (cmd.type == CmdType::Geometry)
-        //{
-        //    blendblock.mBlendChannelMask = Ogre::HlmsBlendblock::BlendChannelAll; 
 
-        //    if (cmd.depthZ > 0.0f)
-        //    {
-        //        macroblock.mDepthCheck = true;
-        //        macroblock.mDepthWrite = false;
-        //        macroblock.mDepthFunc = Ogre::CMPF_EQUAL;
-        //    }
-        //    else
-        //    {
-        //        macroblock.mDepthCheck = false;
-        //        macroblock.mDepthWrite = false;
-        //        macroblock.mDepthFunc = Ogre::CMPF_ALWAYS_PASS;
-        //    }
-        //}
-        //else if (cmd.type == CmdType::ClipMask)
-        //{
-        //    blendblock.mBlendChannelMask = 0; // Невидимая геометрия
-    
-        //    macroblock.mDepthCheck = true;
-        //    macroblock.mDepthWrite = true;
-        //    macroblock.mDepthFunc = Ogre::CMPF_ALWAYS_PASS;
-        //}
+        
 
         //pass->setBlendblock(blendblock);
         //pass->setMacroblock(macroblock);
@@ -879,7 +899,7 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
     renderSystem->_addMetrics( stats );
 
     // There was nothing for RmlUi to draw. We must still prepare the window for presenting.
-    if( bWasReadyForPresent /*&& !stats.mDrawCount*/ )
+    if (bWasReadyForPresent && !stats.mDrawCount)
     {
         Ogre::Vector4 scissors( 0, 0, 1, 1 );
         renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
@@ -916,7 +936,7 @@ void Manager::BeginFrame()
     mCurrentScissor = { 0.0f, 0.0f, 1.0f, 1.0f };
     mScissorEnabled = false;
     mClipMaskEnabled = false;
-    mCurrentDepthZ = 0.0f;
+    mStencilRefValue = 0;
     mCurrentTransform = Ogre::Matrix4::IDENTITY;
 }
 
@@ -961,16 +981,21 @@ void Manager::RenderGeometry(
     cmd.texture = reinterpret_cast<Ogre::TextureGpu*>(texture);
     cmd.scissor = mCurrentScissor;
     cmd.scissorEnabled = mScissorEnabled;
-    cmd.depthZ = mClipMaskEnabled ? mCurrentDepthZ : 0.0f;
     cmd.type = CmdType::Geometry;
+
+    if (mClipMaskEnabled)
+    {
+        cmd.stencilValue = mStencilRefValue;
+        cmd.clipMaskOp = mCurrentClipMaskOp;
+    }
     
-    cmd.transform = mCurrentTransform;
     cmd.transform.setTrans(Ogre::Vector3(translation.x, translation.y, 0));
+    cmd.transform = mCurrentTransform * cmd.transform;
 
     if (!cmd.texture)
     {
         if (!BlankMaterial)
-            createBlankMaterial(m_macroblock, m_blendblock);
+            createBlankMaterial(m_samplerblock, m_macroblock, m_blendblock);
 
         cmd.renderable->setMaterial(BlankMaterial);
 
@@ -1100,21 +1125,34 @@ void Manager::RenderToClipMask(
     Rml::CompiledGeometryHandle geometry,
     Rml::Vector2f translation)
 {
-    mCurrentDepthZ += 0.02f;
+	switch (operation)
+	{
+	case Rml::ClipMaskOperation::Set:
+		mStencilRefValue = 1;
+		break;
+	case Rml::ClipMaskOperation::SetInverse:
+		mStencilRefValue = 0;
+		break;
+	case Rml::ClipMaskOperation::Intersect:
+		++mStencilRefValue;
+		break;
+	}
+    mCurrentClipMaskOp = ClipMaskOperation(operation);
 
     auto& cmd = mDrawCmds.emplace_back();
     cmd.renderable = reinterpret_cast<Renderable*>(geometry);
     cmd.texture = nullptr;
     cmd.scissor = mCurrentScissor;
     cmd.scissorEnabled = mScissorEnabled;
-    cmd.depthZ = mCurrentDepthZ;
+    cmd.stencilValue = mStencilRefValue;
+    cmd.clipMaskOp = mCurrentClipMaskOp;
     cmd.type = CmdType::ClipMask;
     
-    cmd.transform = mCurrentTransform;
     cmd.transform.setTrans(Ogre::Vector3(translation.x, translation.y, 0));
+    cmd.transform = mCurrentTransform * cmd.transform;
 
     if (!BlankMaterial)
-        createBlankMaterial(m_macroblock, m_blendblock);
+        createBlankMaterial(m_samplerblock, m_macroblock, m_blendblock);
 
     cmd.renderable->setMaterial(BlankMaterial);
 }

@@ -12,14 +12,12 @@ class Renderable;
 
 class Manager : public Rml::RenderInterface
 {
-    enum class ClipMode : uint8_t
+    enum class ClipMaskOperation : uint8_t
     {
-        //Set = Rml::ClipMaskOperation::Set,
-        //SetInverse = Rml::ClipMaskOperation::SetInverse,
-        //Intersect = Rml::ClipMaskOperation::Intersect
-        None = 0,
-        Test = 1,
-        SetMask = 2
+        None = -1,
+        Set = Rml::ClipMaskOperation::Set,
+        SetInverse = Rml::ClipMaskOperation::SetInverse,
+        Intersect = Rml::ClipMaskOperation::Intersect
     };
 
     typedef std::vector<Renderable*>                    RenderableVec;
@@ -52,8 +50,9 @@ class Manager : public Rml::RenderInterface
         Ogre::Vector4 scissor;
         CmdType type;
         bool scissorEnabled;
-        float depthZ = 0.0f;
-        Ogre::Matrix4 transform;
+        int stencilValue = 0;
+        ClipMaskOperation clipMaskOp = ClipMaskOperation::None;
+        Ogre::Matrix4 transform = Ogre::Matrix4::IDENTITY;
     };
 
     RenderableMap mAvailableRenderables;
@@ -67,7 +66,8 @@ class Manager : public Rml::RenderInterface
     Ogre::Vector4 mCurrentScissor = { 0.0f, 0.0f, 1.0f, 1.0f };
     bool mScissorEnabled = false;
     bool mClipMaskEnabled = false;
-    float mCurrentDepthZ = 0.0f;
+    int mStencilRefValue = 0;
+    ClipMaskOperation mCurrentClipMaskOp = ClipMaskOperation::None;
     Ogre::Matrix4 mCurrentTransform = Ogre::Matrix4::IDENTITY;
 
 
