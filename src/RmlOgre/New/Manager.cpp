@@ -778,6 +778,49 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
             scissors = Ogre::Vector4( left, top, width, height );
         }
 
+        Ogre::StencilParams stencilParams;
+        if (cmd.type == CmdType::Geometry)
+        {
+            if (cmd.clipMaskOp != ClipMaskOperation::None)
+            {
+                stencilParams.enabled = true;
+                stencilParams.stencilFront.compareOp = Ogre::CMPF_EQUAL;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_KEEP;
+                stencilParams.stencilBack = stencilParams.stencilFront;
+            }
+        }
+        else if (cmd.type == CmdType::ClipMask)
+        {
+            switch (cmd.clipMaskOp)
+            {
+            case ClipMaskOperation::Set:
+                stencilParams.enabled = true;
+                stencilParams.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
+                stencilParams.stencilBack = stencilParams.stencilFront;
+            break;
+
+            case ClipMaskOperation::Intersect:
+                stencilParams.enabled = true;
+                stencilParams.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
+                stencilParams.stencilBack = stencilParams.stencilFront;
+            break;
+
+            case ClipMaskOperation::SetInverse:
+                stencilParams.enabled = true;
+                stencilParams.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
+                stencilParams.stencilBack = stencilParams.stencilFront;
+            break;
+            }
+        }
+        renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
+        
+        renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
+                                                 &scissors, 1u, false, false );
+        renderSystem->executeRenderPassDescriptorDelayedActions();
+
         if( bWasReadyForPresent )
         {
             const bool bShouldBeReadyForPresent = (i + 1) == numNeededDraws;
@@ -788,49 +831,6 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
                 renderPassDesc->entriesModified( Ogre::RenderPassDescriptor::Colour );
             }
         }
-
-        Ogre::StencilParams stencil;
-        if (cmd.type == CmdType::Geometry)
-        {
-            if (cmd.clipMaskOp != ClipMaskOperation::None)
-            {
-                stencil.enabled = true;
-                stencil.stencilFront.compareOp = Ogre::CMPF_EQUAL;
-                stencil.stencilFront.stencilPassOp = Ogre::SOP_KEEP;
-                stencil.stencilBack = stencil.stencilFront;
-            }
-        }
-        else if (cmd.type == CmdType::ClipMask)
-        {
-            switch (cmd.clipMaskOp)
-            {
-            case ClipMaskOperation::Set:
-                stencil.enabled = true;
-                stencil.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
-                stencil.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
-                stencil.stencilBack = stencil.stencilFront;
-            break;
-
-            case ClipMaskOperation::Intersect:
-                stencil.enabled = true;
-                stencil.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
-                stencil.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
-                stencil.stencilBack = stencil.stencilFront;
-            break;
-
-            case ClipMaskOperation::SetInverse:
-                stencil.enabled = true;
-                stencil.stencilFront.compareOp = Ogre::CMPF_ALWAYS_PASS;
-                stencil.stencilFront.stencilPassOp = Ogre::SOP_INVERT;
-                stencil.stencilBack = stencil.stencilFront;
-            break;
-            }
-        }
-        renderSystem->setStencilBufferParams(cmd.stencilValue, stencil);
-        
-        renderSystem->beginRenderPassDescriptor( renderPassDesc, anyTargetTexture, 0u, &viewportSize,
-                                                 &scissors, 1u, false, false );
-        renderSystem->executeRenderPassDescriptorDelayedActions();
 
         Ogre::QueuedRenderable queuedRenderable( 0u, renderable, mDummyMovableObject );
 
@@ -982,7 +982,6 @@ void Manager::RenderGeometry(
     cmd.scissor = mCurrentScissor;
     cmd.scissorEnabled = mScissorEnabled;
     cmd.type = CmdType::Geometry;
-
     if (mClipMaskEnabled)
     {
         cmd.stencilValue = mStencilRefValue;
@@ -998,11 +997,6 @@ void Manager::RenderGeometry(
             createBlankMaterial(m_samplerblock, m_macroblock, m_blendblock);
 
         cmd.renderable->setMaterial(BlankMaterial);
-
-        //if (!BlankDatablock)
-        //    createBlankDatablock(m_macroblock, m_blendblock);
-
-        //cmd.renderable->setDatablock(BlankDatablock);
     }
     else if (!cmd.renderable->getMaterial())
         cmd.renderable->setMaterial(createMaterialFor(cmd.texture));
@@ -1116,8 +1110,8 @@ void Manager::ReleaseTexture(Rml::TextureHandle texture_handle)
 void Manager::EnableClipMask(bool enable)
 {
     mClipMaskEnabled = enable;
-    //if (!enable)
-    //    mCurrentDepthZ = 0.0f;
+    if (!enable)
+        mStencilRefValue = 0;
 }
 
 void Manager::RenderToClipMask(
