@@ -1,7 +1,6 @@
 #pragma once
 
-#include <RmlUi/Core.h>
-#include "Prerequisites.h"
+#include "Shaders.h"
 
 #include <map>
 
@@ -12,16 +11,13 @@ class Renderable;
 
 class Manager : public Rml::RenderInterface
 {
-    enum class ClipMaskOperation : uint8_t
+    enum class ClipMaskOperation : int8_t
     {
         None = -1,
         Set = Rml::ClipMaskOperation::Set,
         SetInverse = Rml::ClipMaskOperation::SetInverse,
         Intersect = Rml::ClipMaskOperation::Intersect
     };
-
-    typedef std::vector<Renderable*>                    RenderableVec;
-    typedef std::map<Ogre::TextureGpu* , RenderableVec> RenderableMap;
 
     enum class CmdType : uint8_t
     {
@@ -31,45 +27,33 @@ class Manager : public Rml::RenderInterface
 
     struct Command
     {
-        //CmdType                     type;
-        //bool                        stateEnabled    = false;
-        //uint32_t                    stencilRefValue = 0;
-        //Ogre::HlmsMacroblock const* macroblock      = nullptr;
-        //Ogre::VertexArrayObject*    vao             = nullptr;
-        //Ogre::HlmsDatablock*        datablock       = nullptr;
-        //Ogre::Matrix4               transform       = Ogre::Matrix4::IDENTITY;
-
-        //uint32_t          vertexOffset;
-        //uint32_t          indexOffset;
-        //uint32_t          indexCount;
-        //Ogre::Vector4     scissor;
-        //Ogre::TextureGpu* texture;
-
-        Ogre::TextureGpu* texture;
-        Renderable* renderable;
-        Ogre::Vector4 scissor;
-        CmdType type;
-        bool scissorEnabled;
-        int stencilValue = 0;
-        ClipMaskOperation clipMaskOp = ClipMaskOperation::None;
-        Ogre::Matrix4 transform = Ogre::Matrix4::IDENTITY;
+        Renderable*        renderable;
+        Ogre::TextureGpu*  texture;
+        Ogre::Vector4      scissor;
+        CmdType            type;
+        bool               scissorEnabled;
+        uint16_t           stencilValue = 0;
+        ClipMaskOperation  clipMaskOp = ClipMaskOperation::None;
+        Ogre::Matrix4      transform = Ogre::Matrix4::IDENTITY;
     };
 
-    RenderableMap mAvailableRenderables;
-    RenderableVec mScheduledRenderables;
+    struct Shader
+    {
+        std::unique_ptr<ShaderMaker> maker;
+        Ogre::MaterialPtr            material;
+    };
 
     std::vector<Command> mDrawCmds;
-    //std::vector<Rml::Vertex> mTempVertices;
-    //std::vector<int> mTempIndices;
-    //uint32_t mCurrentVertexCount = 0;
-    //uint32_t mCurrentIndexCount = 0;
+    //std::vector<uint32_t> m_garbageDrawCmds;
     Ogre::Vector4 mCurrentScissor = { 0.0f, 0.0f, 1.0f, 1.0f };
     bool mScissorEnabled = false;
     bool mClipMaskEnabled = false;
-    int mStencilRefValue = 0;
+    uint16_t mStencilBaseValue = 0;
+    uint16_t mStencilRefValue = 0;
     ClipMaskOperation mCurrentClipMaskOp = ClipMaskOperation::None;
     Ogre::Matrix4 mCurrentTransform = Ogre::Matrix4::IDENTITY;
 
+    Rml::SmallUnorderedMap<size_t, Shader> m_shaders;
 
     Ogre::IndirectBufferPacked* mIndirectBuffer;
     Ogre::CommandBuffer*        mCommandBuffer;
@@ -77,6 +61,10 @@ class Manager : public Rml::RenderInterface
     Ogre::HlmsSamplerblock m_samplerblock;
     Ogre::HlmsMacroblock   m_macroblock;
     Ogre::HlmsBlendblock   m_blendblock;
+    Ogre::MaterialPtr      m_baseMaterial;
+    Ogre::MaterialPtr      m_blankMaterial;
+    Ogre::MaterialPtr      m_maskMaterial;
+    Ogre::TextureGpu*      m_blankTexture{};
 
     Ogre::MovableObject *mDummyMovableObject;
     Ogre::SceneManager*  m_sceneManager{};
@@ -84,18 +72,16 @@ class Manager : public Rml::RenderInterface
     /// Ensures all shaders are created.
     void createPrograms();
 
-    /// Creates a Material for the given texture. Currently, Texture MUST not be nullptr.
-    /// Assumes shaders exist (see createPrograms()).
-    Ogre::MaterialPtr createMaterialFor( Ogre::TextureGpu* texture );
-
-    /// Recycles or creates a new Renderable that can display the given texture.
-    Ogre::Renderable *getAvailableRenderable( Ogre::TextureGpu* texture );
-
     /// Frees all resources.
     void destroyAllResources();
 
     Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                     const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
+
+    void createBlankTexture();
+    void createBlankMaterial();
+    void createBaseMaterial();
+    void createMaskMaterial();
 
 public:
     Manager();
@@ -105,6 +91,12 @@ public:
 
     void drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture,
                                 Ogre::SceneManager *sceneManager, const Ogre::Camera* currentCamera );
+
+    //Ogre::MaterialPtr CreateBlankMaterial();
+
+    void AddShaderMaker(std::string_view name, std::unique_ptr<ShaderMaker>&& maker);
+
+    void OnResourcesLoaded();
 
     void SetSceneManager(Ogre::SceneManager& sceneManager);
 
