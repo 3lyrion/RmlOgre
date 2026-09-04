@@ -58,107 +58,112 @@ Renderable::~Renderable()
 }
 //-----------------------------------------------------------------------------
 
-void Renderable::setOwningCommandIndex(uint16_t index)
+void Renderable::setOwningCommand(uint16_t index, size_t id)
 {
     m_owningCommandIndex = index;
+    m_owningCommandId    = id;
 }
 
-uint16_t Renderable::getOwningCommandIndex() const
+std::pair<uint16_t, size_t> Renderable::getOwningCommand() const
 {
-    return m_owningCommandIndex;
+    return { m_owningCommandIndex, m_owningCommandId };
 }
 
 size_t Renderable::getVertexCount() const
 {
-    if( mVaoPerLod[0].empty() )
-        return 0u;
-    return mVaoPerLod[0].front()->getBaseVertexBuffer()->getNumElements();
+    auto& vaos = mVaoPerLod[Ogre::VpNormal];
+    if (vaos.empty())
+        return 0;
+
+    return vaos[0]->getBaseVertexBuffer()->getNumElements();
 }
 //-----------------------------------------------------------------------------
 size_t Renderable::getIndexCount() const
 {
-    if( mVaoPerLod[0].empty() )
-        return 0u;
-    return mVaoPerLod[0].front()->getIndexBuffer()->getNumElements();
+    auto& vaos = mVaoPerLod[Ogre::VpNormal];
+    if (vaos.empty())
+        return 0;
+
+    return vaos[0]->getIndexBuffer()->getNumElements();
 }
 //-----------------------------------------------------------------------------
 void Renderable::recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBufferPacked *newVertexBuffer,
-                                       Ogre::IndexBufferPacked *newIndexBuffer )
+                                       Ogre::IndexBufferPacked *newIndexBuffer)
 {
-    for(auto *vao : mVaoPerLod[0] )
+    auto& vaos = mVaoPerLod[Ogre::VpNormal];
+    for(auto* vao : vaos)
     {
-        auto &vertexBuffers = vao->getVertexBuffers();
-        for( auto *vertexBuffer : vertexBuffers )
+        auto& vertexBuffers = vao->getVertexBuffers();
+        for (auto* vertexBuffer : vertexBuffers)
         {
-            if( newVertexBuffer )
+            if (newVertexBuffer)
             {
-                if( vertexBuffer->getMappingState() != Ogre::MS_UNMAPPED )
-                    vertexBuffer->unmap( Ogre::UO_UNMAP_ALL );
-                vaoManager->destroyVertexBuffer( vertexBuffer );
+                if (vertexBuffer->getMappingState() != Ogre::MS_UNMAPPED)
+                    vertexBuffer->unmap(Ogre::UO_UNMAP_ALL);
+
+                vaoManager->destroyVertexBuffer(vertexBuffer);
             }
             else
-            {
                 newVertexBuffer = vertexBuffer;
-            }
         }
 
-        if( newIndexBuffer )
+        if (newIndexBuffer)
         {
-            auto *indexBuffer = vao->getIndexBuffer();
-            if( indexBuffer )
+            if (auto* indexBuffer = vao->getIndexBuffer())
             {
-                if( indexBuffer->getMappingState() != Ogre::MS_UNMAPPED )
-                    indexBuffer->unmap( Ogre::UO_UNMAP_ALL );
-                vaoManager->destroyIndexBuffer( indexBuffer );
+                if (indexBuffer->getMappingState() != Ogre::MS_UNMAPPED)
+                    indexBuffer->unmap(Ogre::UO_UNMAP_ALL);
+
+                vaoManager->destroyIndexBuffer(indexBuffer);
             }
         }
         else
-        {
             newIndexBuffer = vao->getIndexBuffer();
-        }
-        vaoManager->destroyVertexArrayObject( vao );
+
+        vaoManager->destroyVertexArrayObject(vao);
     }
 
-    auto  vao  = vaoManager->createVertexArrayObject({ newVertexBuffer }, newIndexBuffer, Ogre::OT_TRIANGLE_LIST);
-    auto& vaos = mVaoPerLod[Ogre::VertexPass::VpNormal];
+    auto vao = vaoManager->createVertexArrayObject({ newVertexBuffer }, newIndexBuffer, Ogre::OT_TRIANGLE_LIST);
     vaos.clear();
     vaos.push_back(vao);
 }
 //-----------------------------------------------------------------------------
-void Renderable::destroyBuffers( Ogre::VaoManager *vaoManager )
+void Renderable::destroyBuffers(Ogre::VaoManager *vaoManager)
 {
-    for( auto *vao : mVaoPerLod[0] )
+    auto& vaos = mVaoPerLod[Ogre::VpNormal];
+    for(auto* vao : vaos)
     {
-        const auto &vertexBuffers = vao->getVertexBuffers();
-        for( auto *vertexBuffer : vertexBuffers )
+        auto& vertexBuffers = vao->getVertexBuffers();
+        for (auto* vertexBuffer : vertexBuffers)
         {
-            if( vertexBuffer->getMappingState() != Ogre::MS_UNMAPPED )
-                vertexBuffer->unmap( Ogre::UO_UNMAP_ALL );
-            vaoManager->destroyVertexBuffer( vertexBuffer );
-        }
+            if (vertexBuffer->getMappingState() != Ogre::MS_UNMAPPED)
+                vertexBuffer->unmap(Ogre::UO_UNMAP_ALL);
 
-        auto *indexBuffer = vao->getIndexBuffer();
-        if( indexBuffer )
-        {
-            if( indexBuffer->getMappingState() != Ogre::MS_UNMAPPED )
-                indexBuffer->unmap( Ogre::UO_UNMAP_ALL );
-            vaoManager->destroyIndexBuffer( indexBuffer );
+            vaoManager->destroyVertexBuffer(vertexBuffer);
         }
-        vaoManager->destroyVertexArrayObject( vao );
+        if (auto* indexBuffer = vao->getIndexBuffer())
+        {
+            if (indexBuffer->getMappingState() != Ogre::MS_UNMAPPED)
+                indexBuffer->unmap(Ogre::UO_UNMAP_ALL);
+
+            vaoManager->destroyIndexBuffer(indexBuffer);
+        }
+        vaoManager->destroyVertexArrayObject(vao);
     }
+    vaos.clear();
 }
 //-----------------------------------------------------------------------------
 void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, Ogre::VaoManager *vaoManager)
 {
-    Ogre::VertexBufferPacked *vertexBuffer = 0;
-    Ogre::IndexBufferPacked *indexBuffer = 0;
+    Ogre::VertexBufferPacked* vertexBuffer = nullptr;
+    Ogre::IndexBufferPacked*  indexBuffer  = nullptr;
     if (vertices.size() > getVertexCount())
     {
         if (VertexFormat.empty())
         {
-            VertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_POSITION ) );
-            VertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT4, Ogre::VES_DIFFUSE ) );
-            VertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES ) );
+            VertexFormat.push_back(Ogre::VertexElement2(Ogre::VET_FLOAT2, Ogre::VES_POSITION));
+            VertexFormat.push_back(Ogre::VertexElement2(Ogre::VET_FLOAT4, Ogre::VES_DIFFUSE));
+            VertexFormat.push_back(Ogre::VertexElement2(Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES));
 	        VertexSize = vaoManager->calculateVertexSize(VertexFormat);
         }
 
@@ -170,6 +175,7 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
 		    GUIVertex{v}.write(verticesIter);
 
         vertexBuffer = vaoManager->createVertexBuffer(VertexFormat, vertices.size(), Ogre::BT_DEFAULT, ogreVertices, false);
+        OGRE_FREE_SIMD(ogreVertices, Ogre::MEMCATEGORY_GEOMETRY);
     }
     if (indices.size() > getIndexCount())
     {
@@ -177,36 +183,37 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
 		    indices.size() * sizeof(Ogre::uint16),
 		    Ogre::MEMCATEGORY_GEOMETRY));
 	    for (std::size_t i = 0; i < indices.size(); ++i)
-		    ogreIndices[i] = indices[i];
+		    ogreIndices[i] = (uint16_t)indices[i];
 
         indexBuffer = vaoManager->createIndexBuffer(Ogre::IndexBufferPacked::IT_16BIT, indices.size(), Ogre::BT_IMMUTABLE, ogreIndices, false);
+        OGRE_FREE_SIMD(ogreIndices, Ogre::MEMCATEGORY_GEOMETRY);
     }
 
     if (vertexBuffer || indexBuffer)
         recreateBuffers(vaoManager, vertexBuffer, indexBuffer);
 }
 //-----------------------------------------------------------------------------
-void Renderable::getWorldTransforms( Ogre::Matrix4 *xform ) const
+void Renderable::getWorldTransforms(Ogre::Matrix4 *xform) const
 {
-    OGRE_EXCEPT( Ogre::Exception::ERR_NOT_IMPLEMENTED,
+    OGRE_EXCEPT(Ogre::Exception::ERR_NOT_IMPLEMENTED,
                  "Renderable do not implement getWorldTransforms."
                  " You've put a v2 object in "
                  "the wrong RenderQueue ID (which is set to be compatible with "
                  "v1::Entity). Do not mix v2 and v1 objects",
-                 "Renderable::getWorldTransforms" );
+                 "Renderable::getWorldTransforms");
 }
 //-----------------------------------------------------------------------------
-void Renderable::getRenderOperation(Ogre::v1::RenderOperation &op, bool casterPass )
+void Renderable::getRenderOperation(Ogre::v1::RenderOperation &op, bool casterPass)
 {
-    OGRE_EXCEPT( Ogre::Exception::ERR_NOT_IMPLEMENTED,
+    OGRE_EXCEPT(Ogre::Exception::ERR_NOT_IMPLEMENTED,
                  "Renderable do not implement getRenderOperation."
                  " You've put a v2 object in "
                  "the wrong RenderQueue ID (which is set to be compatible with "
                  "v1::Entity). Do not mix v2 and v1 objects",
-                 "Renderable::getRenderOperation" );
+                 "Renderable::getRenderOperation");
 }
 //-----------------------------------------------------------------------------
-const Ogre::LightList &Renderable::getLights( void ) const
+const Ogre::LightList &Renderable::getLights(void) const
 {
     static const Ogre::LightList l;
     return l;

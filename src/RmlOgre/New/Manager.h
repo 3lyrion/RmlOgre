@@ -30,13 +30,13 @@ class Manager : public Rml::RenderInterface
         Ogre::TextureGpu*  texture;
         Ogre::Vector4      scissor;
         Rml::Vector2f      translation;
+        size_t             id;
         CmdType            type;
         bool               scissorEnabled;
         ClipMaskOperation  clipMaskOp       = ClipMaskOperation::None;
         uint16_t           stencilValue     = 0;
         uint16_t           renderableIndex;
         uint16_t           transformIndex;
-        size_t             id;
     };
 
     std::vector<Command> m_drawCmds;
@@ -50,13 +50,12 @@ class Manager : public Rml::RenderInterface
     uint16_t             m_stencilRefValue   = 0;
     uint16_t             m_transformRefIndex = UINT16_MAX;
 
-    uint16_t m_poolAllocSize = 256;
+    uint16_t m_generalPoolsAllocSize = 256;
 
     std::vector<Renderable> m_renderablePool;
     std::vector<uint16_t>   m_freeRenderables;
 
-    Ogre::FastArray<Ogre::Matrix4> m_transformPool;
-    std::vector<uint16_t>          m_freeTransforms;
+    std::vector<Ogre::Matrix4> m_transforms;
 
     Rml::SmallUnorderedMap<size_t, std::unique_ptr<ShaderMaker>> m_shaderMakers;
     Rml::SmallUnorderedMap<size_t, Ogre::MaterialPtr>            m_shaderMaterials;
@@ -89,6 +88,8 @@ class Manager : public Rml::RenderInterface
     void createBlankMaterial();
     void createBaseMaterial();
     void createMaskMaterial();
+
+    void expandGeneralPools(uint16_t newSize);
 
 public:
     Manager();
