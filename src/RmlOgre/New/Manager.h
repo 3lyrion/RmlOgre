@@ -27,36 +27,43 @@ class Manager : public Rml::RenderInterface
 
     struct Command
     {
-        Renderable*        renderable;
         Ogre::TextureGpu*  texture;
         Ogre::Vector4      scissor;
+        Rml::Vector2f      translation;
         CmdType            type;
         bool               scissorEnabled;
-        uint16_t           stencilValue = 0;
-        ClipMaskOperation  clipMaskOp = ClipMaskOperation::None;
-        Ogre::Matrix4      transform = Ogre::Matrix4::IDENTITY;
+        ClipMaskOperation  clipMaskOp       = ClipMaskOperation::None;
+        uint16_t           stencilValue     = 0;
+        uint16_t           renderableIndex;
+        uint16_t           transformIndex;
+        size_t             id;
     };
 
-    struct Shader
-    {
-        std::unique_ptr<ShaderMaker> maker;
-        Ogre::MaterialPtr            material;
-    };
+    std::vector<Command> m_drawCmds;
+    size_t               m_cmdIdCounter = 0;
 
-    std::vector<Command> mDrawCmds;
-    //std::vector<uint32_t> m_garbageDrawCmds;
-    Ogre::Vector4 mCurrentScissor = { 0.0f, 0.0f, 1.0f, 1.0f };
-    bool mScissorEnabled = false;
-    bool mClipMaskEnabled = false;
-    uint16_t mStencilBaseValue = 0;
-    uint16_t mStencilRefValue = 0;
-    ClipMaskOperation mCurrentClipMaskOp = ClipMaskOperation::None;
-    Ogre::Matrix4 mCurrentTransform = Ogre::Matrix4::IDENTITY;
+    Ogre::Vector4        m_scissorRef        = { 0.0f, 0.0f, 1.0f, 1.0f };
+    bool                 m_scissorEnabled    = false;
+    bool                 m_clipMaskEnabled   = false;
+    ClipMaskOperation    m_clipMaskOpRef     = ClipMaskOperation::None;
+    uint16_t             m_stencilBaseValue  = 0;
+    uint16_t             m_stencilRefValue   = 0;
+    uint16_t             m_transformRefIndex = UINT16_MAX;
 
-    Rml::SmallUnorderedMap<size_t, Shader> m_shaders;
+    uint16_t m_poolAllocSize = 256;
 
-    Ogre::IndirectBufferPacked* mIndirectBuffer;
-    Ogre::CommandBuffer*        mCommandBuffer;
+    std::vector<Renderable> m_renderablePool;
+    std::vector<uint16_t>   m_freeRenderables;
+
+    Ogre::FastArray<Ogre::Matrix4> m_transformPool;
+    std::vector<uint16_t>          m_freeTransforms;
+
+    Rml::SmallUnorderedMap<size_t, std::unique_ptr<ShaderMaker>> m_shaderMakers;
+    Rml::SmallUnorderedMap<size_t, Ogre::MaterialPtr>            m_shaderMaterials;
+    size_t                                                       m_shaderIdCounter = 0;
+
+    Ogre::IndirectBufferPacked* m_indirectBuffer{};
+    Ogre::CommandBuffer*        m_commandBuffer{};
 
     Ogre::HlmsSamplerblock m_samplerblock;
     Ogre::HlmsMacroblock   m_macroblock;
@@ -66,7 +73,7 @@ class Manager : public Rml::RenderInterface
     Ogre::MaterialPtr      m_maskMaterial;
     Ogre::TextureGpu*      m_blankTexture{};
 
-    Ogre::MovableObject *mDummyMovableObject;
+    Ogre::MovableObject* m_dummyMovableObject{};
     Ogre::SceneManager*  m_sceneManager{};
 
     /// Ensures all shaders are created.

@@ -12,6 +12,9 @@ namespace RmlOgre
 
 class Renderable final : public Ogre::Renderable
 {
+    uint16_t m_owningCommandIndex = 0;
+    size_t   m_owningCommandId    = 0;
+
     void recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBufferPacked *vertexBuffer, Ogre::IndexBufferPacked *indexBuffer );
 
     size_t getVertexCount() const;
@@ -20,6 +23,9 @@ class Renderable final : public Ogre::Renderable
 public:
     Renderable();
     ~Renderable() final;
+
+    void setOwningCommand(uint16_t index, size_t id);
+    std::pair<uint16_t, size_t> getOwningCommand() const;
 
     void destroyBuffers( Ogre::VaoManager *vaoManager );
 

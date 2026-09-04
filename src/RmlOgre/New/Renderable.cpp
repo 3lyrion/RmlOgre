@@ -7,7 +7,8 @@ using namespace RmlOgre;
 
 namespace
 {
-    Ogre::VertexElement2Vec vertexFormat;
+    Ogre::VertexElement2Vec VertexFormat;
+    uint32_t                VertexSize = 0;
 
     struct GUIVertex
     {
@@ -56,6 +57,17 @@ Renderable::~Renderable()
 {
 }
 //-----------------------------------------------------------------------------
+
+void Renderable::setOwningCommandIndex(uint16_t index)
+{
+    m_owningCommandIndex = index;
+}
+
+uint16_t Renderable::getOwningCommandIndex() const
+{
+    return m_owningCommandIndex;
+}
+
 size_t Renderable::getVertexCount() const
 {
     if( mVaoPerLod[0].empty() )
@@ -107,10 +119,10 @@ void Renderable::recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBuffe
         vaoManager->destroyVertexArrayObject( vao );
     }
 
-    auto vao = vaoManager->createVertexArrayObject({ newVertexBuffer }, newIndexBuffer, Ogre::OT_TRIANGLE_LIST);
-
-    mVaoPerLod[Ogre::VertexPass::VpNormal].clear();
-    mVaoPerLod[Ogre::VertexPass::VpNormal].push_back(vao);
+    auto  vao  = vaoManager->createVertexArrayObject({ newVertexBuffer }, newIndexBuffer, Ogre::OT_TRIANGLE_LIST);
+    auto& vaos = mVaoPerLod[Ogre::VertexPass::VpNormal];
+    vaos.clear();
+    vaos.push_back(vao);
 }
 //-----------------------------------------------------------------------------
 void Renderable::destroyBuffers( Ogre::VaoManager *vaoManager )
@@ -142,22 +154,22 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
     Ogre::IndexBufferPacked *indexBuffer = 0;
     if (vertices.size() > getVertexCount())
     {
-        if (vertexFormat.empty())
+        if (VertexFormat.empty())
         {
-            vertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_POSITION ) );
-            vertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT4, Ogre::VES_DIFFUSE ) );
-            vertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES ) );
+            VertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_POSITION ) );
+            VertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT4, Ogre::VES_DIFFUSE ) );
+            VertexFormat.push_back( Ogre::VertexElement2( Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES ) );
+	        VertexSize = vaoManager->calculateVertexSize(VertexFormat);
         }
 
-	    auto vertexSize = vaoManager->calculateVertexSize(vertexFormat);
 	    auto* ogreVertices = reinterpret_cast<float*>(OGRE_MALLOC_SIMD(
-		    vertices.size() * vertexSize,
+		    vertices.size() * VertexSize,
 		    Ogre::MEMCATEGORY_GEOMETRY));
 	    auto verticesIter = ogreVertices;
 	    for (auto& v : vertices)
 		    GUIVertex{v}.write(verticesIter);
 
-        vertexBuffer = vaoManager->createVertexBuffer(vertexFormat, vertices.size(), Ogre::BT_DEFAULT, ogreVertices, false);
+        vertexBuffer = vaoManager->createVertexBuffer(VertexFormat, vertices.size(), Ogre::BT_DEFAULT, ogreVertices, false);
     }
     if (indices.size() > getIndexCount())
     {
