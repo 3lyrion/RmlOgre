@@ -1,10 +1,7 @@
 #pragma once
 
-#include "Prerequisites.h"
-
+#include "RenderInterface.h"
 #include "Compositor/Pass/OgreCompositorPass.h"
-
-#include "OgreHeaderPrefix.h"
 
 namespace RmlOgre
 {
@@ -16,14 +13,14 @@ class CompositorPass : public Ogre::CompositorPass
 protected:
     Ogre::SceneManager *mSceneManager;
     Ogre::Camera       *mCamera;
-    Manager *mManager;
+    RenderInterface    *mManager;
 
     Ogre::IdString mTextureName;
 
 public:
     CompositorPass( const CompositorPassDef *definition, Ogre::Camera* defaultCamera,
                             Ogre::SceneManager *sceneManager, const Ogre::RenderTargetViewDef *rtv,
-                            Ogre::CompositorNode *parentNode, Manager *Manager );
+                            Ogre::CompositorNode *parentNode, RenderInterface *Manager );
 
     void execute( const Ogre::Camera* lodCamera ) final;
 

@@ -1,8 +1,6 @@
-
 #include "CompositorPass.h"
 
 #include "CompositorPassDef.h"
-#include "Manager.h"
 
 #include "Compositor/OgreCompositorNode.h"
 #include "Compositor/OgreTextureDefinition.h"
@@ -15,7 +13,7 @@ using namespace RmlOgre;
 CompositorPass::CompositorPass( const CompositorPassDef *definition,
                                             Ogre::Camera* defaultCamera, Ogre::SceneManager *sceneManager,
                                             const Ogre::RenderTargetViewDef *rtv, Ogre::CompositorNode *parentNode,
-                                            Manager *Manager ) :
+                                            RenderInterface *Manager ) :
     Ogre::CompositorPass( definition, parentNode ),
     mSceneManager( sceneManager ),
     mCamera( 0 ),

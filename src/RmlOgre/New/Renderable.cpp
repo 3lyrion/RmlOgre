@@ -19,10 +19,10 @@ namespace
         GUIVertex(Rml::Vertex const& v) :
             position(v.position.x, v.position.y),
             color   {
-                float(v.colour.red)   / 255.0f,
-                float(v.colour.green) / 255.0f,
-                float(v.colour.blue)  / 255.0f,
-                float(v.colour.alpha) / 255.0f},
+                v.colour.red   / 255.0f,
+                v.colour.green / 255.0f,
+                v.colour.blue  / 255.0f,
+                v.colour.alpha / 255.0f },
             uv      (v.tex_coord.x, v.tex_coord.y)
         { }
 
@@ -58,16 +58,16 @@ Renderable::~Renderable()
 }
 //-----------------------------------------------------------------------------
 
-void Renderable::setOwningCommand(uint16_t index, size_t id)
-{
-    m_owningCommandIndex = index;
-    m_owningCommandId    = id;
-}
-
-std::pair<uint16_t, size_t> Renderable::getOwningCommand() const
-{
-    return { m_owningCommandIndex, m_owningCommandId };
-}
+//void Renderable::setOwningCommand(uint16_t index, size_t id)
+//{
+//    m_owningCommandIndex = index;
+//    m_owningCommandId    = id;
+//}
+//
+//std::pair<uint16_t, size_t> Renderable::getOwningCommand() const
+//{
+//    return { m_owningCommandIndex, m_owningCommandId };
+//}
 
 size_t Renderable::getVertexCount() const
 {
@@ -91,7 +91,7 @@ void Renderable::recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBuffe
                                        Ogre::IndexBufferPacked *newIndexBuffer)
 {
     auto& vaos = mVaoPerLod[Ogre::VpNormal];
-    for(auto* vao : vaos)
+    for (auto* vao : vaos)
     {
         auto& vertexBuffers = vao->getVertexBuffers();
         for (auto* vertexBuffer : vertexBuffers)
@@ -157,7 +157,6 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
 {
     Ogre::VertexBufferPacked* vertexBuffer = nullptr;
     Ogre::IndexBufferPacked*  indexBuffer  = nullptr;
-    if (vertices.size() > getVertexCount())
     {
         if (VertexFormat.empty())
         {
@@ -177,7 +176,6 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
         vertexBuffer = vaoManager->createVertexBuffer(VertexFormat, vertices.size(), Ogre::BT_DEFAULT, ogreVertices, false);
         OGRE_FREE_SIMD(ogreVertices, Ogre::MEMCATEGORY_GEOMETRY);
     }
-    if (indices.size() > getIndexCount())
     {
 	    auto* ogreIndices = reinterpret_cast<Ogre::uint16*>(OGRE_MALLOC_SIMD(
 		    indices.size() * sizeof(Ogre::uint16),

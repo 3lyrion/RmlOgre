@@ -6,7 +6,7 @@
 
 using namespace RmlOgre;
 
-CompositorPassProvider::CompositorPassProvider( Manager *Manager ) :
+CompositorPassProvider::CompositorPassProvider( RenderInterface *Manager ) :
     mManager( Manager )
 {
 }

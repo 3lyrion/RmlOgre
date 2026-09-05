@@ -1,7 +1,6 @@
 #pragma once
 
-#include "Prerequisites.h"
-
+#include "RenderInterface.h"
 #include "Compositor/Pass/OgreCompositorPassProvider.h"
 
 namespace RmlOgre
@@ -9,12 +8,12 @@ namespace RmlOgre
 
 class CompositorPassProvider : public Ogre::CompositorPassProvider
 {
-    Manager *mManager;
+    RenderInterface *mManager;
 
 public:
-    CompositorPassProvider(Manager *Manager );
+    CompositorPassProvider(RenderInterface *Manager );
 
-    Manager *getManager() const { return mManager; }
+    RenderInterface *getManager() const { return mManager; }
 
     /** Called from CompositorTargetDef::addPass when adding a Compositor Ogre::Pass of type 'custom'
     @param passType

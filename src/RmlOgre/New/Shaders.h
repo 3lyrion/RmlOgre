@@ -1,7 +1,6 @@
 #pragma once
 
-#include <RmlUi/Core.h>
-#include "Prerequisites.h"
+#include "Precompiled.h"
 
 namespace RmlOgre
 {

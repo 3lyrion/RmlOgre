@@ -1,4 +1,4 @@
-#include "Manager.h"
+#include "RenderInterface.h"
 
 #include "CommandBuffer/OgreCbDrawCall.h"
 #include "CommandBuffer/OgreCbPipelineStateObject.h"
@@ -25,8 +25,6 @@
 #include "Vao/OgreIndirectBufferPacked.h"
 #include "Vao/OgreVaoManager.h"
 #include "Vao/OgreVertexArrayObject.h"
-#include <OgreIdString.h>
-#include <iostream>
 
 #include <numeric>
 
@@ -54,7 +52,7 @@ namespace
 }
 
 //-----------------------------------------------------------------------------
-Manager::Manager()
+RenderInterface::RenderInterface()
 {
     m_commandBuffer = OGRE_NEW Ogre::CommandBuffer();
     createPrograms();
@@ -72,14 +70,14 @@ Manager::Manager()
     m_macroblock.mCullMode = Ogre::CULL_NONE;
 }
 //-----------------------------------------------------------------------------
-Manager::~Manager()
+RenderInterface::~RenderInterface()
 {
     destroyAllResources();
     delete m_dummyMovableObject;
     delete m_commandBuffer;
 }
 //-----------------------------------------------------------------------------
-void Manager::destroyAllResources()
+void RenderInterface::destroyAllResources()
 {
     m_shaderMakers.clear();
 
@@ -92,29 +90,27 @@ void Manager::destroyAllResources()
     }
 
     m_commandBuffer->clear();
+
+    for (auto& cmd : m_drawCmds)
+    {
+        if (!cmd.renderable)
+            continue;
+
+        auto& renderable = *cmd.renderable;
+        renderable.destroyBuffers(VAOManager);
+        m_memoryManager.destroy(renderable);
+    }
 }
 
-void Manager::expandGeneralPools(uint16_t newSize)
-{
-    m_drawCmds.reserve(newSize);
-    m_renderablePool.resize(newSize);
-    m_freeRenderables.reserve(newSize);
-    for (int decr = newSize - 1; decr >= m_generalPoolsAllocSize; decr--)
-        m_freeRenderables.push_back(decr);
-
-    m_generalPoolsAllocSize = newSize;
-}
-
-void Manager::OnResourcesLoaded()
+void RenderInterface::OnResourcesLoaded()
 {
     auto* renderSystem = Ogre::Root::getSingleton().getRenderSystem();
     VAOManager     = renderSystem->getVaoManager();
     TextureManager = renderSystem->getTextureGpuManager();
 
-    auto allocSize = m_generalPoolsAllocSize;
-    m_generalPoolsAllocSize = 0;
-    expandGeneralPools(allocSize);
-
+    m_drawCmds.reserve(256);
+    m_garbageRenderables.reserve(64);
+    m_memoryManager.registerPool<Renderable, 256, 128>();
     m_transforms.reserve(128);
 
     createBlankTexture();
@@ -123,7 +119,7 @@ void Manager::OnResourcesLoaded()
     createMaskMaterial();
 }
 
-void Manager::createBaseMaterial()
+void RenderInterface::createBaseMaterial()
 {
     const Ogre::String materialName = "!!OgreRmlUi_BaseMat";
     
@@ -141,33 +137,44 @@ void Manager::createBaseMaterial()
     auto textureUnit = pass->createTextureUnitState();
 }
 
-void Manager::createBlankTexture()
+void RenderInterface::createBlankTexture()
 {
     auto* textureManager = Ogre::Root::getSingleton().getRenderSystem()->getTextureGpuManager();
 
+    Ogre::uint8* data = reinterpret_cast<Ogre::uint8*>(
+        OGRE_MALLOC_SIMD(4, Ogre::MEMCATEGORY_GENERAL));
+    uint32_t color = 0xFFFFFFFF;
+    memcpy(data, &color, sizeof(uint32_t));
+
+    auto* image = OGRE_NEW Ogre::Image2;
+    image->loadDynamicImage(
+        data,
+        1,
+        1,
+        1u,
+        Ogre::TextureTypes::Type2D,
+        Ogre::PixelFormatGpu::PFG_RGBA8_UNORM,
+        true,
+        1u);
+
     m_blankTexture = textureManager->createTexture("RmlUi/BlankTexture",
-        Ogre::GpuPageOutStrategy::AlwaysKeepSystemRamCopy,
+        Ogre::GpuPageOutStrategy::Discard,
         0,
         Ogre::TextureTypes::Type2D,
         Ogre::BLANKSTRING);
     m_blankTexture->setNumMipmaps(1);
-    m_blankTexture->setResolution( 1u, 1u );
-    m_blankTexture->setPixelFormat( Ogre::PixelFormatGpu::PFG_RGBA8_UNORM );
-
-    auto* image = OGRE_NEW Ogre::Image2;
-    image->createEmptyImageLike( m_blankTexture );
-    Ogre::TextureBox dstBox = image->getData( 0u );
-    
-    uint32_t whitePixel = 0xFFFFFFFF;
-    memcpy( dstBox.data, &whitePixel, sizeof( uint32_t ) );
-
+    m_blankTexture->setResolution(1, 1);
+    m_blankTexture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
     m_blankTexture->scheduleTransitionTo(Ogre::GpuResidency::Resident, image);
 }
 
-void Manager::createBlankMaterial()
+void RenderInterface::createBlankMaterial()
 {
     const Ogre::String materialName = "!!OgreRmlUi_BlankMat";
-    
+
+    //m_blankMaterial = Ogre::MaterialManager::getSingleton().getByName("Rml/Blank");
+    //Ogre::Pass *pass = m_blankMaterial->getTechnique( 0 )->getPass( 0 );
+
     m_blankMaterial = Ogre::MaterialManager::getSingleton().create(
         materialName, Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME );
 
@@ -183,7 +190,7 @@ void Manager::createBlankMaterial()
     textureUnit->setTexture( m_blankTexture );
 }
 
-void Manager::createMaskMaterial()
+void RenderInterface::createMaskMaterial()
 {
     const Ogre::String materialName = "!!OgreRmlUi_MaskMat";
 
@@ -203,7 +210,7 @@ void Manager::createMaskMaterial()
 
 
 //-----------------------------------------------------------------------------
-Ogre::Matrix4 Manager::getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
+Ogre::Matrix4 RenderInterface::getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                            const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const
 {
     Ogre::Matrix4 projectionMatrix{ 2.0f / vpWidth, 0.0f            , 0.0f , -1.0f,
@@ -228,7 +235,7 @@ Ogre::Matrix4 Manager::getProjectionMatrix( Ogre::RenderSystem* rs, const bool b
     return projectionMatrix;
 }
 //-----------------------------------------------------------------------------
-void Manager::createPrograms()
+void RenderInterface::createPrograms()
 {
     static const char *vertexShaderSrcD3D11 = {
         "uniform float4x4 ProjectionMatrix;\n"
@@ -508,7 +515,7 @@ void Manager::createPrograms()
     }
 }
 //-----------------------------------------------------------------------------
-void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
+void RenderInterface::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
                                        Ogre::TextureGpu* anyTargetTexture, Ogre::SceneManager *sceneManager,
                                        const Ogre::Camera* currentCamera )
 {
@@ -544,10 +551,10 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
         for (size_t i = 0; i < numNeededDraws; ++i)
         {
             auto& cmd = m_drawCmds[i];
-            if (cmd.renderableIndex == UINT16_MAX)
-                continue;
+            //if (!cmd.renderable)
+            //    continue;
 
-            auto& renderable = m_renderablePool[cmd.renderableIndex];
+            auto& renderable = *cmd.renderable;
             auto* vao        = renderable.getVaos(Ogre::VpNormal)[0];
 
             auto& cbCmd = *reinterpret_cast<Ogre::CbDrawIndexed*>(indirectDraw);
@@ -577,10 +584,10 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
 
     Ogre::HlmsCache passCache = hlms->preparePassHash( 0, false, false, sceneManager );
 
-    const int vpWidth = int( anyTargetTexture->getWidth() );
-    const int vpHeight = int( anyTargetTexture->getHeight() );
+    const float vpWidth  = float( anyTargetTexture->getWidth() );
+    const float vpHeight = float( anyTargetTexture->getHeight() );
     const Ogre::Matrix4 projMatrix =
-        getProjectionMatrix( renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera, float(vpWidth), float(vpHeight));
+        getProjectionMatrix( renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera, vpWidth, vpHeight);
 
     auto translationMatrix = Ogre::Matrix4::IDENTITY;
 
@@ -588,31 +595,30 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
     for (size_t i = 0; i < numNeededDraws; i++)
     {
         auto& cmd = m_drawCmds[i];
-        if (cmd.renderableIndex == UINT16_MAX)
-            continue;
+        //if (!cmd.renderable)
+        //    continue;
 
-        auto& renderable = m_renderablePool[cmd.renderableIndex];
+        auto& renderable = *cmd.renderable;
         auto* vao        = renderable.getVaos(Ogre::VpNormal).back();
         OGRE_ASSERT_MEDIUM( vao->getVaoName() != 0u &&
                     "Invalid Vao name! This can happen if a BT_IMMUTABLE buffer was "
-                    "recently created and VaoManager::_beginFrame() wasn't called" );
+                    "recently created and VaoRenderInterface::_beginFrame() wasn't called" );
 
         auto* pass = renderable.getMaterial()->getTechnique(0u)->getPass(0u);
 
         Ogre::Vector4 scissors = viewportSize;
         if (cmd.scissorEnabled)
         {
-            int scLeft = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.x), 0, vpWidth );
-            int scTop = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.y), 0, vpHeight );
-            int scRight = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.z), 0, vpWidth );
-            int scBottom = Ogre::Math::Clamp( static_cast<int>(cmd.scissor.w), 0, vpHeight );
+            auto scLeft   = Ogre::Math::Clamp( cmd.scissor.x, 0.0f, vpWidth );
+            auto scTop    = Ogre::Math::Clamp( cmd.scissor.y, 0.0f, vpHeight );
+            auto scRight  = Ogre::Math::Clamp( cmd.scissor.z, 0.0f, vpWidth );
+            auto scBottom = Ogre::Math::Clamp( cmd.scissor.w, 0.0f, vpHeight );
 
-            const float left = (float)scLeft / (float)vpWidth;
-            const float top = (float)scTop / (float)vpHeight;
-            const float width = (float)( scRight - scLeft ) / (float)vpWidth;
-            const float height = (float)( scBottom - scTop ) / (float)vpHeight;
-
-            scissors = Ogre::Vector4( left, top, width, height );
+            auto left   = scLeft / vpWidth;
+            auto top    = scTop / vpHeight;
+            auto width  = (scRight - scLeft) / vpWidth;
+            auto height = (scBottom - scTop) / vpHeight;
+            scissors = Ogre::Vector4(left, top, width, height);
         }
 
         Ogre::StencilParams stencilParams;
@@ -724,12 +730,12 @@ void Manager::drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc,
     }
 }
 
-void Manager::AddShaderMaker(std::string_view name, std::unique_ptr<ShaderMaker>&& maker)
+void RenderInterface::AddShaderMaker(std::string_view name, std::unique_ptr<ShaderMaker>&& maker)
 {
     m_shaderMakers[StringHasher(name)] = std::move(maker);
 }
 
-void Manager::SetSceneManager(Ogre::SceneManager& sceneManager)
+void RenderInterface::SetSceneManager(Ogre::SceneManager& sceneManager)
 {
     if (m_sceneManager == &sceneManager)
         return;
@@ -750,8 +756,23 @@ void Manager::SetSceneManager(Ogre::SceneManager& sceneManager)
 
 }
 
-void Manager::BeginFrame()
+void RenderInterface::BeginFrame()
 {
+    for (auto* renderable : m_garbageRenderables)
+    {
+        renderable->destroyBuffers(VAOManager);
+
+        //auto [cmdIdx, cmdId] = renderable.getOwningCommand();
+        //if (cmdIdx < m_drawCmds.size())
+        //{
+        //    auto& cmd = m_drawCmds[cmdIdx];
+        //    if (cmd.renderable == &renderable)
+        //        cmd.renderable = nullptr;
+        //}
+
+        m_memoryManager.destroy(*renderable);
+    }
+    m_garbageRenderables.clear();
     m_drawCmds.clear();
     m_scissorRef = { 0.0f, 0.0f, 1.0f, 1.0f };
     m_scissorEnabled = false;
@@ -762,56 +783,35 @@ void Manager::BeginFrame()
     m_transforms.clear();
 }
 
- void Manager::EndFrame()
+ void RenderInterface::EndFrame()
  {
      // Nothing
  }
 
-Rml::CompiledGeometryHandle Manager::CompileGeometry(
+Rml::CompiledGeometryHandle RenderInterface::CompileGeometry(
     Rml::Span<const Rml::Vertex> vertices,
     Rml::Span<const int> indices)
 {
-    if (m_freeRenderables.empty())
-        expandGeneralPools(m_generalPoolsAllocSize * 2);
-
-    auto index = m_freeRenderables.back();
-    m_freeRenderables.pop_back();
-
-    auto& renderable = m_renderablePool[index];
-    renderable.destroyBuffers(VAOManager);
+    auto& renderable = m_memoryManager.create<Renderable>();
     renderable.updateVertexData(vertices, indices, VAOManager);
 
-    return ++index;
+    return reinterpret_cast<Rml::CompiledGeometryHandle>(&renderable);
 }
 
-void Manager::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
+void RenderInterface::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
 {
-    auto index = static_cast<uint16_t>(geometry) - 1;
-    m_freeRenderables.push_back(index);
-
-    auto& renderable      = m_renderablePool[index];
-    auto  [cmdIdx, cmdId] = renderable.getOwningCommand();
-    if (cmdIdx >= m_drawCmds.size())
-        return;
-
-    auto& cmd = m_drawCmds[cmdIdx];
-    if (cmd.id != cmdId)
-        return;
-
-    cmd.renderableIndex = UINT16_MAX;
-    renderable.destroyBuffers(VAOManager);
+    auto* renderable = reinterpret_cast<Renderable*>(geometry);
+    m_garbageRenderables.push_back(renderable);
 }
 
-void Manager::RenderGeometry(
+void RenderInterface::RenderGeometry(
         Rml::CompiledGeometryHandle geometry,
         Rml::Vector2f translation,
         Rml::TextureHandle texture) 
 {
-    auto index = static_cast<uint16_t>(geometry) - 1;
-
     auto& cmd = m_drawCmds.emplace_back();
-    cmd.id              = ++m_cmdIdCounter;
-    cmd.renderableIndex = index;
+    //cmd.id              = ++m_cmdIdCounter;
+    cmd.renderable      = reinterpret_cast<Renderable*>(geometry);
     cmd.texture         = reinterpret_cast<Ogre::TextureGpu*>(texture);
     cmd.scissor         = m_scissorRef;
     cmd.scissorEnabled  = m_scissorEnabled;
@@ -821,25 +821,28 @@ void Manager::RenderGeometry(
         cmd.stencilValue = m_stencilRefValue;
         cmd.clipMaskOp = m_clipMaskOpRef;
     }
+    else
+    {
+        cmd.clipMaskOp   = ClipMaskOperation::None;
+    }
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    auto& renderable = m_renderablePool[index];
-    renderable.setOwningCommand(uint16_t(m_drawCmds.size() - 1), cmd.id);
-    renderable.setMaterial(texture ? m_baseMaterial : m_blankMaterial);
+    //cmd.renderable->setOwningCommand(uint16_t(m_drawCmds.size() - 1), cmd.id);
+    cmd.renderable->setMaterial(texture ? m_baseMaterial : m_blankMaterial);
 }
 
-void Manager::EnableScissorRegion(bool enable)
+void RenderInterface::EnableScissorRegion(bool enable)
 {
     m_scissorEnabled = enable;
 }
 
-void Manager::SetScissorRegion(Rml::Rectanglei region)
+void RenderInterface::SetScissorRegion(Rml::Rectanglei region)
 {
     m_scissorRef = Ogre::Vector4{ (float)region.Left(), (float)region.Top(), (float)region.Right(), (float)region.Bottom() };
 }
 
-void Manager::SetTransform(const Rml::Matrix4f* transform)
+void RenderInterface::SetTransform(const Rml::Matrix4f* transform)
 {
     if (!transform)
     {
@@ -851,7 +854,7 @@ void Manager::SetTransform(const Rml::Matrix4f* transform)
     m_transformRefIndex = uint16_t(m_transforms.size() - 1);
 }
 
-Rml::TextureHandle Manager::LoadTexture(
+Rml::TextureHandle RenderInterface::LoadTexture(
     Rml::Vector2i& texture_dimensions,
     const Rml::String& source
 )
@@ -859,13 +862,11 @@ Rml::TextureHandle Manager::LoadTexture(
     return 0;
 }
 
-Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions)
+Rml::TextureHandle RenderInterface::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions)
 {  
     Ogre::String texName = "RmlUiTex_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>());
-    std::size_t size = Ogre::PixelFormatGpuUtils::calculateSizeBytes(
-        source_dimensions.x, source_dimensions.y, 1u, 1u, Ogre::PixelFormatGpu::PFG_RGBA8_UNORM_SRGB, 1u, 4u);
     Ogre::uint8* data = reinterpret_cast<Ogre::uint8*>(
-        OGRE_MALLOC_SIMD(size, Ogre::MEMCATEGORY_GENERAL));
+        OGRE_MALLOC_SIMD(source.size(), Ogre::MEMCATEGORY_GENERAL));
     std::copy(source.begin(), source.end(), data);
 
     auto* image = OGRE_NEW Ogre::Image2;
@@ -881,7 +882,7 @@ Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, R
 
     Ogre::TextureGpu* texture = TextureManager->createTexture(
         texName,
-        Ogre::GpuPageOutStrategy::AlwaysKeepSystemRamCopy,
+        Ogre::GpuPageOutStrategy::Discard,
         0,
         Ogre::TextureTypes::Type2D,
         Ogre::BLANKSTRING);
@@ -893,19 +894,19 @@ Rml::TextureHandle Manager::GenerateTexture(Rml::Span<const Rml::byte> source, R
     return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
-void Manager::ReleaseTexture(Rml::TextureHandle texture_handle)
+void RenderInterface::ReleaseTexture(Rml::TextureHandle texture_handle)
 {
     auto* tex = reinterpret_cast<Ogre::TextureGpu*>(texture_handle);
     if (tex)
         TextureManager->destroyTexture(tex);
 }
 
-void Manager::EnableClipMask(bool enable)
+void RenderInterface::EnableClipMask(bool enable)
 {
     m_clipMaskEnabled = enable;
 }
 
-void Manager::RenderToClipMask(
+void RenderInterface::RenderToClipMask(
     Rml::ClipMaskOperation operation,
     Rml::CompiledGeometryHandle geometry,
     Rml::Vector2f translation)
@@ -924,8 +925,8 @@ void Manager::RenderToClipMask(
     m_clipMaskOpRef = ClipMaskOperation(operation);
 
     auto& cmd = m_drawCmds.emplace_back();
-    cmd.id              = ++m_cmdIdCounter;
-    cmd.renderableIndex = index;
+    //cmd.id              = ++m_cmdIdCounter;
+    cmd.renderable      = reinterpret_cast<Renderable*>(geometry);
     cmd.texture         = nullptr;
     cmd.scissor         = m_scissorRef;
     cmd.scissorEnabled  = m_scissorEnabled;
@@ -935,17 +936,16 @@ void Manager::RenderToClipMask(
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    auto& renderable = m_renderablePool[index];
-    renderable.setOwningCommand(uint16_t(m_drawCmds.size() - 1), cmd.id);
-    renderable.setMaterial(m_maskMaterial);
+    //cmd.renderable->setOwningCommand(uint16_t(m_drawCmds.size() - 1), cmd.id);
+    cmd.renderable->setMaterial(m_maskMaterial);
 }
 
-Rml::LayerHandle Manager::PushLayer()
+Rml::LayerHandle RenderInterface::PushLayer()
 {
     return {};
 }
 
-void Manager::CompositeLayers(
+void RenderInterface::CompositeLayers(
     Rml::LayerHandle source,
     Rml::LayerHandle destination,
     Rml::BlendMode blend_mode,
@@ -954,34 +954,34 @@ void Manager::CompositeLayers(
 
 }
 
-void Manager::PopLayer()
+void RenderInterface::PopLayer()
 {
 
 }
 
-Rml::CompiledFilterHandle Manager::CompileFilter(
+Rml::CompiledFilterHandle RenderInterface::CompileFilter(
     const Rml::String& name,
     const Rml::Dictionary& parameters)
 {
     return {};
 }
 
-void Manager::ReleaseFilter(Rml::CompiledFilterHandle filter)
+void RenderInterface::ReleaseFilter(Rml::CompiledFilterHandle filter)
 {
 
 }
 
-Rml::TextureHandle Manager::SaveLayerAsTexture()
-{
-    return {};
-}
-
-Rml::CompiledFilterHandle Manager::SaveLayerAsMaskImage()
+Rml::TextureHandle RenderInterface::SaveLayerAsTexture()
 {
     return {};
 }
 
-Rml::CompiledShaderHandle Manager::CompileShader(
+Rml::CompiledFilterHandle RenderInterface::SaveLayerAsMaskImage()
+{
+    return {};
+}
+
+Rml::CompiledShaderHandle RenderInterface::CompileShader(
     const Rml::String& name,
     const Rml::Dictionary& parameters)
 {
@@ -996,7 +996,7 @@ Rml::CompiledShaderHandle Manager::CompileShader(
     return m_shaderIdCounter;
 }
 
-void Manager::RenderShader(
+void RenderInterface::RenderShader(
     Rml::CompiledShaderHandle shader,
     Rml::CompiledGeometryHandle geometry,
     Rml::Vector2f translation,
@@ -1011,8 +1011,8 @@ void Manager::RenderShader(
     auto index = static_cast<uint16_t>(geometry) - 1;
 
     auto& cmd = m_drawCmds.emplace_back();
-    cmd.id              = ++m_cmdIdCounter;
-    cmd.renderableIndex = index;
+    //cmd.id              = ++m_cmdIdCounter;
+    cmd.renderable      = reinterpret_cast<Renderable*>(geometry);
     cmd.texture         = nullptr;
     cmd.scissor         = m_scissorRef;
     cmd.scissorEnabled  = m_scissorEnabled;
@@ -1020,18 +1020,21 @@ void Manager::RenderShader(
     if (m_clipMaskEnabled)
     {
         cmd.stencilValue = m_stencilRefValue;
-        cmd.clipMaskOp   = m_clipMaskOpRef;
+        cmd.clipMaskOp = m_clipMaskOpRef;
+    }
+    else
+    {
+        cmd.clipMaskOp   = ClipMaskOperation::None;
     }
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    auto& renderable = m_renderablePool[index];
     auto& mat = m_shaderMaterials.at(shader);
-    renderable.setOwningCommand(uint16_t(m_drawCmds.size() - 1), cmd.id);
-    renderable.setMaterial(mat);
+    //cmd.renderable->setOwningCommand(uint16_t(m_drawCmds.size() - 1), cmd.id);
+    cmd.renderable->setMaterial(mat);
 }
 
-void Manager::ReleaseShader(Rml::CompiledShaderHandle shader)
+void RenderInterface::ReleaseShader(Rml::CompiledShaderHandle shader)
 {
     m_shaderMaterials.erase(shader);
 }
