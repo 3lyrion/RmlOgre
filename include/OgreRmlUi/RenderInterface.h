@@ -19,12 +19,22 @@ enum class ClipMaskOperation : int8
     Intersect  = Rml::ClipMaskOperation::Intersect
 };
 
+enum class BlendMode : int8
+{
+    Blend   = Rml::BlendMode::Blend,
+    Replace = Rml::BlendMode::Replace
+};
+
 struct DrawCommand
 {
     enum class Type : uint8
     {
         Geometry = 0,
-        ClipMask
+        ClipMask,
+        PushLayer,
+        PopLayer,
+        CompositeLayers,
+        SaveLayer
     };
 
     Renderable*        renderable;
@@ -34,9 +44,12 @@ struct DrawCommand
     Type               type;
     bool               scissorEnabled;
     ClipMaskOperation  clipMaskOp;
+    BlendMode          blendMode;
     uint16             stencilValue;
     uint16             transformIndex;
-    size_t             filterId;
+    uint16             srcLayerIndex;
+    uint16             destLayerIndex;
+    uint16             filterSetIndex;
 };
 
 class RenderInterface : public Rml::RenderInterface
@@ -50,77 +63,75 @@ public:
 
     void OnResourcesLoaded();
 
-    void SetSceneManager(Ogre::SceneManager& sceneManager);
-
     void BeginFrame();
     void EndFrame();
 
-	Rml::CompiledGeometryHandle CompileGeometry(
-		Rml::Span<const Rml::Vertex> vertices,
-		Rml::Span<const int> indices
-	) final;
-	void RenderGeometry(
-		Rml::CompiledGeometryHandle geometry,
-		Rml::Vector2f translation,
-		Rml::TextureHandle texture
-	) final;
-	void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) final;
+    Rml::CompiledGeometryHandle CompileGeometry(
+        Rml::Span<const Rml::Vertex> vertices,
+        Rml::Span<const int> indices
+    ) final;
+    void RenderGeometry(
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation,
+        Rml::TextureHandle texture
+    ) final;
+    void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) final;
 
-	Rml::TextureHandle LoadTexture(
-		Rml::Vector2i& texture_dimensions,
-		const Rml::String& source
-	) final;
-	Rml::TextureHandle GenerateTexture(
-		Rml::Span<const Rml::byte> source,
-		Rml::Vector2i source_dimensions
-	) final;
-	void ReleaseTexture(Rml::TextureHandle texture) final;
+    Rml::TextureHandle LoadTexture(
+        Rml::Vector2i& texture_dimensions,
+        const Rml::String& source
+    ) final;
+    Rml::TextureHandle GenerateTexture(
+        Rml::Span<const Rml::byte> source,
+        Rml::Vector2i source_dimensions
+    ) final;
+    void ReleaseTexture(Rml::TextureHandle texture) final;
 
-	void EnableScissorRegion(bool enable) final;
-	void SetScissorRegion(Rml::Rectanglei region) final;
+    void EnableScissorRegion(bool enable) final;
+    void SetScissorRegion(Rml::Rectanglei region) final;
 
-	void SetTransform(const Rml::Matrix4f* transform) final;
+    void SetTransform(const Rml::Matrix4f* transform) final;
 
-	void EnableClipMask(bool enable) final;
-	void RenderToClipMask(
-		Rml::ClipMaskOperation operation,
-		Rml::CompiledGeometryHandle geometry,
-		Rml::Vector2f translation
-	) final;
+    void EnableClipMask(bool enable) final;
+    void RenderToClipMask(
+        Rml::ClipMaskOperation operation,
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation
+    ) final;
 
-	Rml::LayerHandle PushLayer() final;
-	void CompositeLayers(
-		Rml::LayerHandle source,
-		Rml::LayerHandle destination,
-		Rml::BlendMode blend_mode,
-		Rml::Span<const Rml::CompiledFilterHandle> filters
-	) final;
-	void PopLayer() final;
+    Rml::LayerHandle PushLayer() final;
+    void CompositeLayers(
+        Rml::LayerHandle source,
+        Rml::LayerHandle destination,
+        Rml::BlendMode blend_mode,
+        Rml::Span<const Rml::CompiledFilterHandle> filters
+    ) final;
+    void PopLayer() final;
 
-	Rml::TextureHandle SaveLayerAsTexture() final;
-	Rml::CompiledFilterHandle SaveLayerAsMaskImage() final;
+    Rml::TextureHandle SaveLayerAsTexture() final;
+    Rml::CompiledFilterHandle SaveLayerAsMaskImage() final;
 
-	Rml::CompiledFilterHandle CompileFilter(
-		const Rml::String& name,
-		const Rml::Dictionary& parameters
-	) final;
-	void ReleaseFilter(Rml::CompiledFilterHandle filter) final;
+    Rml::CompiledFilterHandle CompileFilter(
+        const Rml::String& name,
+        const Rml::Dictionary& parameters
+    ) final;
+    void ReleaseFilter(Rml::CompiledFilterHandle filter) final;
 
-	Rml::CompiledShaderHandle CompileShader(
-		const Rml::String& name,
-		const Rml::Dictionary& parameters
-	) final;
-	void RenderShader(
-		Rml::CompiledShaderHandle shader,
-		Rml::CompiledGeometryHandle geometry,
-		Rml::Vector2f translation,
-		Rml::TextureHandle texture
-	) final;
-	void ReleaseShader(Rml::CompiledShaderHandle shader) final;
+    Rml::CompiledShaderHandle CompileShader(
+        const Rml::String& name,
+        const Rml::Dictionary& parameters
+    ) final;
+    void RenderShader(
+        Rml::CompiledShaderHandle shader,
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation,
+        Rml::TextureHandle texture
+    ) final;
+    void ReleaseShader(Rml::CompiledShaderHandle shader) final;
 
 public:
-    void drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture,
-                                Ogre::SceneManager *sceneManager, const Ogre::Camera* currentCamera );
+    void setSceneManager(Ogre::SceneManager* sceneManager);
+    void drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera);
 
     void addDrawCommand(DrawCommand const& command);
     void injectNewRenderable(DrawCommand& command, Ogre::MaterialPtr const& material = nullptr);
@@ -129,6 +140,12 @@ public:
     void releaseTexture(Ogre::TextureGpu* texture);
 
 private:
+    struct RenderContext
+    {
+        Ogre::RenderPassDescriptor* passDesc;
+        Ogre::TextureGpu*           target;
+    };
+
     Vector<DrawCommand>  m_drawCommands;
     Ogre::Vector4        m_scissorRef        = { 0.0f, 0.0f, 1.0f, 1.0f };
     bool                 m_scissorEnabled    = false;
@@ -137,12 +154,17 @@ private:
     uint16               m_stencilBaseValue  = 0;
     uint16               m_stencilRefValue   = 0;
     uint16               m_transformRefIndex = UINT16_MAX;
+    uint16               m_layerIndexRef     = 0;
+    uint16               m_layerIndexMax     = 0;
 
     Ogre::MaterialPtr m_baseMaterial;
     Ogre::MaterialPtr m_blankMaterial;
     Ogre::MaterialPtr m_maskMaterial;
 
-    Vector<Ogre::Matrix4> m_transforms;
+    Vector<Ogre::Matrix4>     m_transforms;
+    Vector<Ogre::TextureGpu*> m_rttPool;
+    Vector<RenderContext>     m_renderStack;
+    Vector<Vector<size_t>>    m_filterSets;
 
     UMap<size_t, UPtr<ShaderMaker>> m_shaderMakers;
     UMap<size_t, Ogre::MaterialPtr> m_shaderMaterials;
@@ -165,12 +187,14 @@ private:
     Ogre::SceneManager*   m_sceneManager{};
     detail::MemoryManager m_memoryManager;
 
-    Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
-                                    const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
-
     void createBlankMaterial();
     void createBaseMaterial();
     void createMaskMaterial();
+
+    Ogre::TextureGpu* acquireLayerTexture(float vpWidth, float vpHeight);
+
+    Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
+                                    const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
 };
 
 }  // namespace OgreRmlUi

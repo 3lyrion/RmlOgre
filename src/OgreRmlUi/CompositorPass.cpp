@@ -27,17 +27,17 @@ namespace
 
 
     public:
-        CompositorPass( const CompositorPassDef *definition, Ogre::Camera* defaultCamera,
-                                Ogre::SceneManager *sceneManager, const Ogre::RenderTargetViewDef *rtv,
-                                Ogre::CompositorNode *parentNode, RenderInterface *Manager );
+        CompositorPass(CompositorPassDef const* definition, Ogre::Camera* defaultCamera,
+                       Ogre::SceneManager* sceneManager, Ogre::RenderTargetViewDef const* rtv,
+                       Ogre::CompositorNode* parentNode, RenderInterface* Manager);
 
-        void execute( const Ogre::Camera* lodCamera ) final;
+        void execute(const Ogre::Camera* lodCamera) final;
 
     private:
-        CompositorPassDef const *mDefinition;
-        Ogre::SceneManager      *mSceneManager;
-        Ogre::Camera            *mCamera;
-        RenderInterface         *mManager;
+        CompositorPassDef const* m_definition;
+        Ogre::SceneManager*      m_sceneManager;
+        Ogre::Camera*            m_camera;
+        RenderInterface*         m_manager;
     };
 }
 
@@ -72,20 +72,21 @@ Ogre::CompositorPass *CompositorPassProvider::addPass( const Ogre::CompositorPas
     return OGRE_NEW CompositorPass( rmluiDef, defaultCamera, sceneManager, rtvDef, parentNode, mManager );
 }
 
-CompositorPass::CompositorPass( const CompositorPassDef *definition,
-                                            Ogre::Camera* defaultCamera, Ogre::SceneManager *sceneManager,
-                                            const Ogre::RenderTargetViewDef *rtv, Ogre::CompositorNode *parentNode,
-                                            RenderInterface *Manager ) :
-    Ogre::CompositorPass( definition, parentNode ),
-    mSceneManager( sceneManager ),
-    mCamera( defaultCamera ),
-    mManager( Manager ),
-    mDefinition( definition )
+CompositorPass::CompositorPass(CompositorPassDef const* definition, Ogre::Camera* defaultCamera,
+                               Ogre::SceneManager* sceneManager, Ogre::RenderTargetViewDef const* rtv,
+                               Ogre::CompositorNode* parentNode, RenderInterface* Manager) :
+    Ogre::CompositorPass(definition, parentNode),
+    m_sceneManager      (sceneManager),
+    m_camera            (defaultCamera),
+    m_manager           (Manager),
+    m_definition        (definition)
 {
-    initialize( rtv );
+    initialize(rtv);
+
+    m_manager->setSceneManager(sceneManager);
 }
 //-----------------------------------------------------------------------------------
-void CompositorPass::execute( const Ogre::Camera* lodCamera )
+void CompositorPass::execute( const Ogre::Camera* /*lodCamera*/ )
 {
     // Execute a limited number of times?
     if( mNumPassesLeft != std::numeric_limits<uint32_t>::max() )
@@ -102,16 +103,13 @@ void CompositorPass::execute( const Ogre::Camera* lodCamera )
     analyzeBarriers();
     executeResourceTransitions();
 
-    Ogre::SceneManager *sceneManager = mCamera->getSceneManager();
-    sceneManager->_setCamerasInProgress( Ogre::CamerasInProgress( mCamera ) );
-    sceneManager->_setCurrentCompositorPass( this );
+    m_sceneManager->_setCamerasInProgress(Ogre::CamerasInProgress(m_camera));
+    m_sceneManager->_setCurrentCompositorPass(this);
 
-    // Fire the listener in case it wants to change anything
     notifyPassPreExecuteListeners();
 
-    mManager->drawIntoCompositor( mRenderPassDesc, mAnyTargetTexture, mSceneManager, mCamera );
-
-    sceneManager->_setCurrentCompositorPass( 0 );
+    m_manager->drawIntoCompositor(mRenderPassDesc, mAnyTargetTexture, m_camera);
+    m_sceneManager->_setCurrentCompositorPass(0);
 
     notifyPassPosExecuteListeners();
 
