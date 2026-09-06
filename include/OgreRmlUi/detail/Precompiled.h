@@ -6,7 +6,7 @@
 #include <typeindex>
 #include <type_traits>
 
-namespace RmlOgre
+namespace OgreRmlUi
 {
 
 using uchar  = uint8_t;
@@ -20,17 +20,19 @@ using uint16 = uint16_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
+using String = std::string;
+
+using StringView = std::string_view;
+
 template <typename T>
 using Hash = robin_hood::hash<T>; // RmlUi
 
-inline constexpr Hash<std::string_view> StringHasher;
+inline constexpr Hash<StringView> StringHasher;
 
-using String = std::string;
-
-template <typename T, typename Del = std::default_delete<T> >
+template <typename T, typename Del = std::default_delete<T>>
 using UniquePtr = std::unique_ptr<T, Del>;
 
-template <typename T, typename Del = std::default_delete<T> >
+template <typename T, typename Del = std::default_delete<T>>
 using UPtr = UniquePtr<T, Del>;
 
 template <typename T>
@@ -46,10 +48,13 @@ template <typename KeyT, typename ValT>
 using FlatMap = itlib::flat_map<KeyT, ValT, std::less<KeyT>>; // RmlUi
 
 template <typename KeyT, typename ValT>
-using UnorderedMap = robin_hood::unordered_node_map<KeyT, ValT>; // RmlUi
+using UnorderedMap = robin_hood::unordered_map<KeyT, ValT>; // RmlUi
 
 template <typename KeyT, typename ValT>
 using UMap = UnorderedMap<KeyT, ValT>;
+
+template <typename T>
+using FlatSet = itlib::flat_set<T, std::less<T>>; // RmlUi
 
 using TypeInfo = std::type_info;
 
@@ -75,4 +80,4 @@ constexpr auto find(MapT const& map, KeyT&& key) -> typename MapT::mapped_type c
     return &entry->second;
 }
 
-} // namespace RmlOgre
+} // namespace OgreRmlUi

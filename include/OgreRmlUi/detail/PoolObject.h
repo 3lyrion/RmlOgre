@@ -1,8 +1,10 @@
+// Credits: 3lyrion [OgreRmlUi]
+
 #pragma once
 
-#include "Precompiled.h"
+#include <OgreRmlUi/detail/Precompiled.h>
 
-namespace RmlOgre
+namespace OgreRmlUi::detail
 {
 
 class PoolObject

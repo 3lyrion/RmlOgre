@@ -1,9 +1,11 @@
+// Credits: 3lyrion [OgreRmlUi]
+
 #pragma once
 
-#include "../PoolObject.h"
-#include <mimalloc-3.5/mimalloc.h>
+#include <OgreRmlUi/detail/PoolObject.h>
+#include <mimalloc.h>
 
-namespace RmlOgre::detail
+namespace OgreRmlUi::detail
 {
     
 class MemoryPool
@@ -123,10 +125,10 @@ private:
 
     void expand(bool updateSize = true)
     {
-        size_t alloc_count = updateSize ? m_expansionSize : m_size;
-        m_freeList.reserve(m_freeList.size() + alloc_count);
+        size_t allocCount = updateSize ? m_expansionSize : m_size;
+        m_freeList.reserve(m_freeList.size() + allocCount);
     
-        for (size_t i = 0; i < alloc_count; i++)
+        for (size_t i = 0; i < allocCount; i++)
         {
             T* obj = static_cast<T*>(mi_heap_malloc(m_heap, sizeof(T)));
             m_freeList.push_back(obj);
@@ -137,4 +139,4 @@ private:
     }
 };
 
-} // namespace RmlOgre
+} // namespace OgreRmlUi

@@ -1,8 +1,10 @@
+// Credits: 3lyrion [OgreRmlUi]
+
 #pragma once
 
-#include "detail/MemoryPool.h"
+#include <OgreRmlUi/detail/MemoryPool.h>
 
-namespace RmlOgre
+namespace OgreRmlUi::detail
 {
 
 class MemoryManager

@@ -1,23 +1,23 @@
+// Credits: 3lyrion [OgreRmlUi], nimble [OgreRmlUi], the ogre-next team [ImGui]
+
 #pragma once
 
-#include "PoolObject.h"
+#include <OgreRmlUi/detail/PoolObject.h>
 
 #include <OgreRenderOperation.h>
 #include <OgreRenderable.h>
 
-namespace RmlOgre
+namespace OgreRmlUi
 {
 
-class Renderable final : public Ogre::Renderable, public PoolObject
+class Renderable : public Ogre::Renderable, public detail::PoolObject
 {
 public:
     Renderable();
-    ~Renderable() final;
-
-    //void setOwningCommand(uint16_t index, size_t id);
-    //std::pair<uint16_t, size_t> getOwningCommand() const;
 
     void destroyBuffers( Ogre::VaoManager *vaoManager );
+
+    void shareSameVAO(Renderable const& other);
 
     // builds the vertex buffer
     void updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, Ogre::VaoManager *vaoManager );
@@ -29,8 +29,7 @@ public:
     const Ogre::LightList &getLights( void ) const final;
 
 private:
-    //uint16_t m_owningCommandIndex = 0;
-    //size_t   m_owningCommandId    = 0;
+    bool m_hasDependency = false;
 
     void recreateBuffers(Ogre::VaoManager *vaoManager, Ogre::VertexBufferPacked *vertexBuffer, Ogre::IndexBufferPacked *indexBuffer );
 
@@ -38,4 +37,4 @@ private:
     size_t getIndexCount() const;
 };
 
-} // namespace RmlOgre
+} // namespace OgreRmlUi

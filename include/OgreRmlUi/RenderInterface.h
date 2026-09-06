@@ -1,12 +1,43 @@
+// Credits: 3lyrion [OgreRmlUi], the ogre-next team [ImGui]
+
 #pragma once
 
-#include "Shaders.h"
-#include "MemoryManager.h"
+#include <OgreRmlUi/Filter.h>
+#include <OgreRmlUi/Shader.h>
+#include <OgreRmlUi/detail/MemoryManager.h>
 
-namespace RmlOgre
+namespace OgreRmlUi
 {
 
 class Renderable;
+
+enum class ClipMaskOperation : int8
+{
+    None       = -1,
+    Set        = Rml::ClipMaskOperation::Set,
+    SetInverse = Rml::ClipMaskOperation::SetInverse,
+    Intersect  = Rml::ClipMaskOperation::Intersect
+};
+
+struct DrawCommand
+{
+    enum class Type : uint8
+    {
+        Geometry = 0,
+        ClipMask
+    };
+
+    Renderable*        renderable;
+    Ogre::TextureGpu*  texture;
+    Ogre::Vector4      scissor;
+    Rml::Vector2f      translation;
+    Type               type;
+    bool               scissorEnabled;
+    ClipMaskOperation  clipMaskOp;
+    uint16             stencilValue;
+    uint16             transformIndex;
+    size_t             filterId;
+};
 
 class RenderInterface : public Rml::RenderInterface
 {
@@ -14,10 +45,8 @@ public:
     RenderInterface();
     ~RenderInterface();
 
-    void drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture,
-                                Ogre::SceneManager *sceneManager, const Ogre::Camera* currentCamera );
-
     void AddShaderMaker(std::string_view name, std::unique_ptr<ShaderMaker>&& maker);
+    void AddFilterMaker(std::string_view name, std::unique_ptr<FilterMaker>&& maker);
 
     void OnResourcesLoaded();
 
@@ -71,7 +100,6 @@ public:
 	Rml::TextureHandle SaveLayerAsTexture() final;
 	Rml::CompiledFilterHandle SaveLayerAsMaskImage() final;
 
-    
 	Rml::CompiledFilterHandle CompileFilter(
 		const Rml::String& name,
 		const Rml::Dictionary& parameters
@@ -90,56 +118,41 @@ public:
 	) final;
 	void ReleaseShader(Rml::CompiledShaderHandle shader) final;
 
+public:
+    void drawIntoCompositor( Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture,
+                                Ogre::SceneManager *sceneManager, const Ogre::Camera* currentCamera );
+
+    void addDrawCommand(DrawCommand const& command);
+    void injectNewRenderable(DrawCommand& command, Ogre::MaterialPtr const& material = nullptr);
+    DrawCommand* getLastDrawCommand();
+
+    void releaseTexture(Ogre::TextureGpu* texture);
 
 private:
-    enum class ClipMaskOperation : int8_t
-    {
-        None = -1,
-        Set = Rml::ClipMaskOperation::Set,
-        SetInverse = Rml::ClipMaskOperation::SetInverse,
-        Intersect = Rml::ClipMaskOperation::Intersect
-    };
-
-    enum class CmdType : uint8_t
-    {
-        Geometry = 0,
-        ClipMask
-    };
-
-    struct Command
-    {
-        Renderable*        renderable;
-        Ogre::TextureGpu*  texture;
-        Ogre::Vector4      scissor;
-        Rml::Vector2f      translation;
-        //size_t             id;
-        CmdType            type;
-        bool               scissorEnabled;
-        ClipMaskOperation  clipMaskOp;
-        uint16_t           stencilValue;
-        uint16_t           transformIndex;
-    };
-
-    Vector<Command>      m_drawCmds;
-    //size_t               m_cmdIdCounter = 0;
-
+    Vector<DrawCommand>  m_drawCommands;
     Ogre::Vector4        m_scissorRef        = { 0.0f, 0.0f, 1.0f, 1.0f };
     bool                 m_scissorEnabled    = false;
     bool                 m_clipMaskEnabled   = false;
     ClipMaskOperation    m_clipMaskOpRef     = ClipMaskOperation::None;
-    uint16_t             m_stencilBaseValue  = 0;
-    uint16_t             m_stencilRefValue   = 0;
-    uint16_t             m_transformRefIndex = UINT16_MAX;
+    uint16               m_stencilBaseValue  = 0;
+    uint16               m_stencilRefValue   = 0;
+    uint16               m_transformRefIndex = UINT16_MAX;
 
-    uint16_t m_generalPoolsAllocSize = 256;
-
-    Vector<Renderable*> m_garbageRenderables;
+    Ogre::MaterialPtr m_baseMaterial;
+    Ogre::MaterialPtr m_blankMaterial;
+    Ogre::MaterialPtr m_maskMaterial;
 
     Vector<Ogre::Matrix4> m_transforms;
 
-    UMap<size_t, std::unique_ptr<ShaderMaker>> m_shaderMakers;
-    UMap<size_t, Ogre::MaterialPtr>            m_shaderMaterials;
-    size_t                                     m_shaderIdCounter = 0;
+    UMap<size_t, UPtr<ShaderMaker>> m_shaderMakers;
+    UMap<size_t, Ogre::MaterialPtr> m_shaderMaterials;
+    size_t                          m_shaderFilterIdCounter = 0;
+
+    UMap<size_t, UPtr<FilterMaker>> m_filterMakers;
+    UMap<size_t, UPtr<Filter>>      m_filters;
+
+    Vector<Renderable*> m_garbageRenderables;
+    FlatSet<size_t>     m_garbageFilterIds;
 
     Ogre::IndirectBufferPacked* m_indirectBuffer{};
     Ogre::CommandBuffer*        m_commandBuffer{};
@@ -147,28 +160,17 @@ private:
     Ogre::HlmsSamplerblock m_samplerblock;
     Ogre::HlmsMacroblock   m_macroblock;
     Ogre::HlmsBlendblock   m_blendblock;
-    Ogre::MaterialPtr      m_baseMaterial;
-    Ogre::MaterialPtr      m_blankMaterial;
-    Ogre::MaterialPtr      m_maskMaterial;
-    Ogre::TextureGpu*      m_blankTexture{};
 
-    Ogre::MovableObject* m_dummyMovableObject{};
-    Ogre::SceneManager*  m_sceneManager{};
-    MemoryManager        m_memoryManager;
-
-    /// Ensures all shaders are created.
-    void createPrograms();
-
-    /// Frees all resources.
-    void destroyAllResources();
+    Ogre::MovableObject*  m_dummyMovableObject{};
+    Ogre::SceneManager*   m_sceneManager{};
+    detail::MemoryManager m_memoryManager;
 
     Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                     const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
 
-    void createBlankTexture();
     void createBlankMaterial();
     void createBaseMaterial();
     void createMaskMaterial();
 };
 
-}  // namespace RmlOgre
+}  // namespace OgreRmlUi

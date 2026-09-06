@@ -1,8 +1,10 @@
+// Credits: 3lyrion [OgreRmlUi], nimble [OgreRmlUi]
+
 #pragma once
 
-#include "Precompiled.h"
+#include <OgreRmlUi/detail/Precompiled.h>
 
-namespace RmlOgre
+namespace OgreRmlUi
 {
 
 class ShaderMaker
@@ -13,4 +15,4 @@ public:
     virtual Ogre::MaterialPtr make(Rml::Dictionary const& parameters) = 0;
 };
 
-} // namespace RmlOgre
+} // namespace OgreRmlUi

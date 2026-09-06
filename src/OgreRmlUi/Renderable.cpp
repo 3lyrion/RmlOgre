@@ -1,9 +1,11 @@
-#include "Renderable.h"
+#include <OgreRmlUi/Renderable.h>
+
+#include <OgreRmlUi/Utils.h>
 
 #include "Vao/OgreVaoManager.h"
 #include "Vao/OgreVertexArrayObject.h"
 
-using namespace RmlOgre;
+using namespace OgreRmlUi;
 
 namespace
 {
@@ -19,10 +21,10 @@ namespace
         GUIVertex(Rml::Vertex const& v) :
             position(v.position.x, v.position.y),
             color   {
-                v.colour.red   / 255.0f,
-                v.colour.green / 255.0f,
-                v.colour.blue  / 255.0f,
-                v.colour.alpha / 255.0f },
+                v.colour.red   * util::k_rmlColorToOgreMult,
+                v.colour.green * util::k_rmlColorToOgreMult,
+                v.colour.blue  * util::k_rmlColorToOgreMult,
+                v.colour.alpha * util::k_rmlColorToOgreMult },
             uv      (v.tex_coord.x, v.tex_coord.y)
         { }
 
@@ -52,22 +54,6 @@ Renderable::Renderable()
     // By default we want Renderables to still work in wireframe mode
     mPolygonModeOverrideable = false;
 }
-//-----------------------------------------------------------------------------
-Renderable::~Renderable()
-{
-}
-//-----------------------------------------------------------------------------
-
-//void Renderable::setOwningCommand(uint16_t index, size_t id)
-//{
-//    m_owningCommandIndex = index;
-//    m_owningCommandId    = id;
-//}
-//
-//std::pair<uint16_t, size_t> Renderable::getOwningCommand() const
-//{
-//    return { m_owningCommandIndex, m_owningCommandId };
-//}
 
 size_t Renderable::getVertexCount() const
 {
@@ -152,7 +138,20 @@ void Renderable::destroyBuffers(Ogre::VaoManager *vaoManager)
     }
     vaos.clear();
 }
-//-----------------------------------------------------------------------------
+
+void Renderable::shareSameVAO(Renderable const& other)
+{
+    auto& vaos = mVaoPerLod[Ogre::VpNormal];
+
+    assert(!m_hasDependency);
+    assert(vaos.empty());
+    m_hasDependency = true;
+
+    auto& depVaos = other.getVaos(Ogre::VpNormal);
+    assert(!depVaos.empty());
+    vaos.push_back(depVaos[0]);
+}
+
 void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, Ogre::VaoManager *vaoManager)
 {
     Ogre::VertexBufferPacked* vertexBuffer = nullptr;
@@ -181,7 +180,7 @@ void Renderable::updateVertexData(Rml::Span<const Rml::Vertex> vertices, Rml::Sp
 		    indices.size() * sizeof(Ogre::uint16),
 		    Ogre::MEMCATEGORY_GEOMETRY));
 	    for (std::size_t i = 0; i < indices.size(); ++i)
-		    ogreIndices[i] = (uint16_t)indices[i];
+		    ogreIndices[i] = (uint16)indices[i];
 
         indexBuffer = vaoManager->createIndexBuffer(Ogre::IndexBufferPacked::IT_16BIT, indices.size(), Ogre::BT_IMMUTABLE, ogreIndices, false);
         OGRE_FREE_SIMD(ogreIndices, Ogre::MEMCATEGORY_GEOMETRY);
