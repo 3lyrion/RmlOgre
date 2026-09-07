@@ -34,11 +34,12 @@ struct DrawCommand
         PushLayer,
         PopLayer,
         CompositeLayers,
-        SaveLayer
+        SaveLayerAsTexture,
+        SaveLayerAsMaskImage
     };
 
     Renderable*        renderable;
-    Ogre::TextureGpu*  texture;
+    size_t             textureId;
     Ogre::Vector4      scissor;
     Rml::Vector2f      translation;
     Type               type;
@@ -143,7 +144,7 @@ private:
     struct RenderContext
     {
         Ogre::RenderPassDescriptor* passDesc;
-        Ogre::TextureGpu*           target;
+        size_t                      textureId;
     };
 
     Vector<DrawCommand>  m_drawCommands;
@@ -154,17 +155,19 @@ private:
     uint16               m_stencilBaseValue  = 0;
     uint16               m_stencilRefValue   = 0;
     uint16               m_transformRefIndex = UINT16_MAX;
-    uint16               m_layerIndexRef     = 0;
-    uint16               m_layerIndexMax     = 0;
+    int16                m_layerIndexRef     = -1;
+    int16                m_layerIndexMax     = -1;
 
     Ogre::MaterialPtr m_baseMaterial;
     Ogre::MaterialPtr m_blankMaterial;
     Ogre::MaterialPtr m_maskMaterial;
 
-    Vector<Ogre::Matrix4>     m_transforms;
-    Vector<Ogre::TextureGpu*> m_rttPool;
-    Vector<RenderContext>     m_renderStack;
-    Vector<Vector<size_t>>    m_filterSets;
+    size_t                          m_textureIdCounter = 0;
+    UMap<size_t, Ogre::TextureGpu*> m_textures;
+
+    Vector<Ogre::Matrix4>   m_transforms;
+    Vector<RenderContext>   m_renderStack;
+    Vector<Vector<size_t>>  m_filterSets;
 
     UMap<size_t, UPtr<ShaderMaker>> m_shaderMakers;
     UMap<size_t, Ogre::MaterialPtr> m_shaderMaterials;
@@ -174,6 +177,7 @@ private:
     UMap<size_t, UPtr<Filter>>      m_filters;
 
     Vector<Renderable*> m_garbageRenderables;
+    Vector<size_t>      m_garbageTextureIds;
     FlatSet<size_t>     m_garbageFilterIds;
 
     Ogre::IndirectBufferPacked* m_indirectBuffer{};
@@ -191,7 +195,7 @@ private:
     void createBaseMaterial();
     void createMaskMaterial();
 
-    Ogre::TextureGpu* acquireLayerTexture(float vpWidth, float vpHeight);
+    Ogre::TextureGpu* acquireLayerTexture(size_t textureId, float vpWidth, float vpHeight, Ogre::TextureGpu& mainRTT);
 
     Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                     const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
