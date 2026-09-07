@@ -12,6 +12,8 @@
 #include "OgreHighLevelGpuProgramManager.h"
 #include "OgreHlms.h"
 #include "OgreHlmsUnlit.h"
+#include "OgreHlmsUnlitDatablock.h"
+#include <OgreHlmsPbs.h>
 #include "OgreHlmsManager.h"
 #include "OgreHlmsUnlitDatablock.h"
 #include "OgreMaterialManager.h"
@@ -198,23 +200,33 @@ Ogre::Matrix4 RenderInterface::getProjectionMatrix( Ogre::RenderSystem* rs, cons
                                     0.0f          ,  0.0f           , -1.0f,  0.0f,
                                     0.0f          ,  0.0f           ,  0.0f,  1.0f };
     // Still need to take RS depth into account.
-    rs->_convertProjectionMatrix( projectionMatrix, projectionMatrix );
-#if OGRE_NO_VIEWPORT_ORIENTATIONMODE == 0
-    projectionMatrix = projectionMatrix * Quaternion(currentCamera->getOrientationModeAngle(), Vector3::UNIT_Z);
-#endif
-
-    if (bRequiresTextureFlipping)
-    {
-        // Invert transformed y.
-        projectionMatrix[1][0] = -projectionMatrix[1][0];
-        projectionMatrix[1][1] = -projectionMatrix[1][1];
-        projectionMatrix[1][2] = -projectionMatrix[1][2];
-        projectionMatrix[1][3] = -projectionMatrix[1][3];
-    }
+//    rs->_convertProjectionMatrix( projectionMatrix, projectionMatrix );
+//#if OGRE_NO_VIEWPORT_ORIENTATIONMODE == 0
+//    projectionMatrix = projectionMatrix * Quaternion(currentCamera->getOrientationModeAngle(), Vector3::UNIT_Z);
+//#endif
+//
+//    if (bRequiresTextureFlipping)
+//    {
+//        // Invert transformed y.
+//        projectionMatrix[1][0] = -projectionMatrix[1][0];
+//        projectionMatrix[1][1] = -projectionMatrix[1][1];
+//        projectionMatrix[1][2] = -projectionMatrix[1][2];
+//        projectionMatrix[1][3] = -projectionMatrix[1][3];
+//    }
     return projectionMatrix;
 }
 
-void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera)
+void RenderInterface::injectDatablock(Renderable& renderable, Ogre::TextureGpu* texture)
+{
+    auto* hlmsManager = Ogre::Root::getSingleton().getHlmsManager();
+    auto* hlmsUnlit   = static_cast<Ogre::HlmsUnlit*>(hlmsManager->getHlms(Ogre::HLMS_UNLIT));
+    auto* datablock   = static_cast<Ogre::HlmsUnlitDatablock*>(hlmsUnlit->createDatablock("", "", m_macroblock, m_blendblock, {}));
+    datablock->setUseColour(true);
+    if (texture)
+        datablock->setTexture(0, texture, &m_samplerblock);
+}
+
+void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera* currentCamera)
 {
     auto*      renderSystem            = m_sceneManager->getDestinationRenderSystem();
     const bool supportsIndirectBuffers = VAOManager->supportsIndirectBuffers();
@@ -274,7 +286,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     auto* hlms        = hlmsManager->getHlms(Ogre::HLMS_LOW_LEVEL);
 
     m_commandBuffer->setCurrentRenderSystem( renderSystem );
-    const auto passCache = hlms->preparePassHash(0, false, false, m_sceneManager);
     size_t skippedPasses = 0;
 
     int baseInstanceAndIndirectBuffers = 0;
@@ -286,6 +297,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     const float vpWidth    = float( anyTargetTexture->getWidth() );
     const float vpHeight   = float( anyTargetTexture->getHeight() );
     const auto  projMatrix = getProjectionMatrix(renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera, vpWidth, vpHeight);
+    //m_camera->setOrthoWindow(vpWidth, vpHeight);
     auto translationMatrix = Ogre::Matrix4::IDENTITY;
 
     m_layerIndexRef = 0;
@@ -296,6 +308,15 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     auto lastScissorEnabled = false;
     auto lastStencilValue   = uint16(0);
     auto lastClipMaskOp     = ClipMaskOperation::None;
+    auto lastTransformIdx   = UINT16_MAX;
+
+    const bool wasCustomView = currentCamera->isCustomViewMatrixEnabled();
+    const bool wasCustomProj = currentCamera->isCustomProjectionMatrixEnabled();
+
+    //currentCamera->setCustomViewMatrix(true, Ogre::Matrix4::IDENTITY);
+    //currentCamera->setProjectionType(Ogre::PT_ORTHOGRAPHIC);
+
+    Ogre::HlmsCache const* hlmsCache = nullptr;
 
     size_t indirectIdx = 0;
     for (size_t i = 0; i < numNeededDraws; i++)
@@ -348,11 +369,11 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
             case DrawCommand::Type::CompositeLayers:
             {
-                auto& dstContext = m_renderStack[cmd.destLayerIndex];
-                auto& srcContext = m_renderStack[cmd.srcLayerIndex];
+                //auto& dstContext = m_renderStack[cmd.destLayerIndex];
+                //auto& srcContext = m_renderStack[cmd.srcLayerIndex];
 
-                renderSystem->beginRenderPassDescriptor(context.passDesc, context.target, 0, &viewportSize, &viewportSize, 1, false, false);
-                renderSystem->executeRenderPassDescriptorDelayedActions();
+                //renderSystem->beginRenderPassDescriptor(context.passDesc, context.target, 0, &viewportSize, &viewportSize, 1, false, false);
+                //renderSystem->executeRenderPassDescriptorDelayedActions();
             }
             break;
 
@@ -425,13 +446,27 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             }
         }
 
-        if (lastType != cmd.type || lastScissorEnabled != cmd.scissorEnabled ||
-            lastStencilValue != cmd.stencilValue || lastClipMaskOp != cmd.clipMaskOp || lastScissors != scissors)
+        if (cmd.texture)
+        {
+            auto* textureUnit = pass->getTextureUnitState(0);
+            textureUnit->setTexture(cmd.texture);
+        }
+
+        translationMatrix.setTrans(Ogre::Vector3(cmd.translation.x, cmd.translation.y, 0));
+        auto finalProjMatrix = (cmd.transformIndex == UINT16_MAX)
+            ? projMatrix * translationMatrix
+            : projMatrix * m_transforms[cmd.transformIndex] * translationMatrix;
+        //pass->getVertexProgramParameters()->setNamedConstant("ProjectionMatrix", finalProjMatrix);
+
+        Ogre::QueuedRenderable queuedRenderable(0, renderable, m_dummyMovableObject);
+
+        if (i == 0 || lastType != cmd.type || lastScissorEnabled != cmd.scissorEnabled || lastTransformIdx != cmd.transformIndex
+            || lastStencilValue != cmd.stencilValue || lastClipMaskOp != cmd.clipMaskOp || lastScissors != scissors)
         {
             if (i != 0)
             {
                 int flags = Ogre::RenderPassDescriptor::Colour;
-                if (stencilParams.enabled)
+                if (lastClipMaskOp != ClipMaskOperation::None)
                 {
                     flags |= Ogre::RenderPassDescriptor::Stencil;
                 }
@@ -443,6 +478,12 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             lastScissorEnabled = cmd.scissorEnabled;
             lastStencilValue   = cmd.stencilValue;
             lastClipMaskOp     = cmd.clipMaskOp;
+            lastTransformIdx   = cmd.transformIndex;
+
+            currentCamera->setCustomViewMatrix(true, Ogre::Matrix4::IDENTITY);
+            currentCamera->setCustomProjectionMatrix(true, finalProjMatrix);
+            auto passCache = hlms->preparePassHash(0, false, false, m_sceneManager);
+            hlmsCache = hlms->getMaterial( &c_dummyCache, passCache, queuedRenderable, false, nullptr );
 
             renderSystem->beginRenderPassDescriptor(renderPassDesc, anyTargetTexture, 0, &viewportSize, &scissors, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
@@ -450,20 +491,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         else
             skippedPasses++;
 
-        if (cmd.texture)
-        {
-            auto* textureUnit = pass->getTextureUnitState(0);
-            textureUnit->setTexture(cmd.texture);
-        }
-
-        translationMatrix.setTrans(Ogre::Vector3(cmd.translation.x, cmd.translation.y, 0));
-        auto finalProjMatrix = (cmd.transformIndex == UINT16_MAX)
-            ? projMatrix * translationMatrix
-            : projMatrix * m_transforms[cmd.transformIndex] * translationMatrix;
-        pass->getVertexProgramParameters()->setNamedConstant("ProjectionMatrix", finalProjMatrix);
-
-        Ogre::QueuedRenderable queuedRenderable(0, renderable, m_dummyMovableObject);
-        auto* hlmsCache = hlms->getMaterial( &c_dummyCache, passCache, queuedRenderable, false, nullptr );
         auto* psoCmd    = m_commandBuffer->addCommand<Ogre::CbPipelineStateObject>();
         *psoCmd = Ogre::CbPipelineStateObject(&hlmsCache->pso);
         hlms->fillBuffersForV2(hlmsCache, queuedRenderable, false, 0u, m_commandBuffer);
@@ -493,6 +520,10 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         renderPassDesc->mReadyWindowForPresent = true;
         renderPassDesc->entriesModified(Ogre::RenderPassDescriptor::Colour);
         renderSystem->endRenderPassDescriptor();
+        if (!wasCustomView)
+            currentCamera->setCustomViewMatrix(false, Ogre::Matrix4::IDENTITY);
+        if (!wasCustomProj)
+            currentCamera->setCustomProjectionMatrix(false, Ogre::Matrix4::IDENTITY);
     }
     else if (bWasReadyForPresent && !stats.mDrawCount) // There was nothing for RmlUi to draw. We must still prepare the window for presenting.
     {
@@ -556,18 +587,29 @@ void RenderInterface::setSceneManager(Ogre::SceneManager* sceneManager)
 
     if (m_dummyMovableObject && m_sceneManager)
     {
-        m_sceneManager->getRootSceneNode(Ogre::SCENE_STATIC)->detachObject(m_dummyMovableObject);
+        auto* rootNode = m_sceneManager->getRootSceneNode(Ogre::SCENE_STATIC);
+        rootNode->detachObject(m_dummyMovableObject);
+        //rootNode->detachObject(m_camera);
         delete m_dummyMovableObject;
+        //delete m_camera;
     }
 
     m_sceneManager = sceneManager;
     m_dummyMovableObject = OGRE_NEW RmlUiDummyMO(
         Ogre::Id::generateNewId<Ogre::MovableObject>(),
         &sceneManager->_getEntityMemoryManager(Ogre::SCENE_STATIC), sceneManager, 254);
-    sceneManager->getRootSceneNode(Ogre::SCENE_STATIC)->attachObject( m_dummyMovableObject );
+    auto* rootNode = m_sceneManager->getRootSceneNode(Ogre::SCENE_STATIC);
+    rootNode->attachObject(m_dummyMovableObject);
     m_dummyMovableObject->setVisible(false);
     m_dummyMovableObject->setCastShadows(false);
 
+    //m_camera = m_sceneManager->createCamera("!!OgreRmlUi_Camera");
+    //rootNode->attachObject(m_camera);
+    //m_camera->setAutoAspectRatio(true);
+    //m_camera->setNearClipDistance(0.0f);
+    //m_camera->setFarClipDistance(1000.0f);
+    //m_camera->setUseIdentityView(true);
+    //m_camera->setProjectionType(Ogre::ProjectionType::PT_ORTHOGRAPHIC);
 }
 
 void RenderInterface::BeginFrame()
@@ -769,7 +811,7 @@ void RenderInterface::CompositeLayers(
     cmd.blendMode      = BlendMode(blend_mode);
     if (!filters.empty())
     {
-        cmd.filterSetIndex = m_filterSets.size();
+        cmd.filterSetIndex = (uint16)m_filterSets.size();
         auto& filterSet = m_filterSets.emplace_back();
         filterSet.reserve(filters.size());
         for (auto filter : filters)

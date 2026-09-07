@@ -131,7 +131,7 @@ public:
 
 public:
     void setSceneManager(Ogre::SceneManager* sceneManager);
-    void drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera);
+    void drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera* currentCamera);
 
     void addDrawCommand(DrawCommand const& command);
     void injectNewRenderable(DrawCommand& command, Ogre::MaterialPtr const& material = nullptr);
@@ -185,6 +185,7 @@ private:
 
     Ogre::MovableObject*  m_dummyMovableObject{};
     Ogre::SceneManager*   m_sceneManager{};
+    Ogre::Camera*         m_camera{};
     detail::MemoryManager m_memoryManager;
 
     void createBlankMaterial();
@@ -195,6 +196,8 @@ private:
 
     Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                     const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
+
+    void injectDatablock(Renderable& renderable, Ogre::TextureGpu* texture = nullptr);
 };
 
 }  // namespace OgreRmlUi
