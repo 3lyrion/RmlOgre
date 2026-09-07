@@ -218,12 +218,15 @@ Ogre::Matrix4 RenderInterface::getProjectionMatrix( Ogre::RenderSystem* rs, cons
 
 void RenderInterface::injectDatablock(Renderable& renderable, Ogre::TextureGpu* texture)
 {
+    Ogre::String name = "!!OgreRmlUi_Datablock_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Renderable>());
     auto* hlmsManager = Ogre::Root::getSingleton().getHlmsManager();
     auto* hlmsUnlit   = static_cast<Ogre::HlmsUnlit*>(hlmsManager->getHlms(Ogre::HLMS_UNLIT));
-    auto* datablock   = static_cast<Ogre::HlmsUnlitDatablock*>(hlmsUnlit->createDatablock("", "", m_macroblock, m_blendblock, {}));
+    auto* datablock   = static_cast<Ogre::HlmsUnlitDatablock*>(hlmsUnlit->createDatablock(name, name, m_macroblock, m_blendblock, {}));
     datablock->setUseColour(true);
     if (texture)
         datablock->setTexture(0, texture, &m_samplerblock);
+
+    renderable.setDatablock(datablock);
 }
 
 void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera* currentCamera)
@@ -283,7 +286,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     }
 
     auto* hlmsManager = Ogre::Root::getSingleton().getHlmsManager();
-    auto* hlms        = hlmsManager->getHlms(Ogre::HLMS_LOW_LEVEL);
+    auto* hlms        = hlmsManager->getHlms(Ogre::HLMS_UNLIT);
 
     m_commandBuffer->setCurrentRenderSystem( renderSystem );
     size_t skippedPasses = 0;
@@ -312,9 +315,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
     const bool wasCustomView = currentCamera->isCustomViewMatrixEnabled();
     const bool wasCustomProj = currentCamera->isCustomProjectionMatrixEnabled();
-
-    //currentCamera->setCustomViewMatrix(true, Ogre::Matrix4::IDENTITY);
-    //currentCamera->setProjectionType(Ogre::PT_ORTHOGRAPHIC);
 
     Ogre::HlmsCache const* hlmsCache = nullptr;
 
@@ -391,7 +391,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                     "Invalid Vao name! This can happen if a BT_IMMUTABLE buffer was "
                     "recently created and VaoRenderInterface::_beginFrame() wasn't called" );
 
-        auto* pass = renderable->getMaterial()->getTechnique(0)->getPass(0);
 
         Ogre::Vector4 scissors = viewportSize;
         if (cmd.scissorEnabled)
@@ -446,11 +445,12 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             }
         }
 
-        if (cmd.texture)
-        {
-            auto* textureUnit = pass->getTextureUnitState(0);
-            textureUnit->setTexture(cmd.texture);
-        }
+        //auto* pass = renderable->getMaterial()->getTechnique(0)->getPass(0);
+        //if (cmd.texture)
+        //{
+        //    auto* textureUnit = pass->getTextureUnitState(0);
+        //    textureUnit->setTexture(cmd.texture);
+        //}
 
         translationMatrix.setTrans(Ogre::Vector3(cmd.translation.x, cmd.translation.y, 0));
         auto finalProjMatrix = (cmd.transformIndex == UINT16_MAX)
@@ -459,6 +459,8 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         //pass->getVertexProgramParameters()->setNamedConstant("ProjectionMatrix", finalProjMatrix);
 
         Ogre::QueuedRenderable queuedRenderable(0, renderable, m_dummyMovableObject);
+
+        hlms = hlmsManager->getHlms(renderable->getMaterial() ? Ogre::HLMS_LOW_LEVEL : Ogre::HLMS_UNLIT);
 
         if (i == 0 || lastType != cmd.type || lastScissorEnabled != cmd.scissorEnabled || lastTransformIdx != cmd.transformIndex
             || lastStencilValue != cmd.stencilValue || lastClipMaskOp != cmd.clipMaskOp || lastScissors != scissors)
@@ -686,7 +688,8 @@ void RenderInterface::RenderGeometry(
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    cmd.renderable->setMaterial(texture ? m_baseMaterial : m_blankMaterial);
+    injectDatablock(*cmd.renderable, cmd.texture);
+    //cmd.renderable->setMaterial(texture ? m_baseMaterial : m_blankMaterial);
 }
 
 void RenderInterface::EnableScissorRegion(bool enable)
