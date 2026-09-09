@@ -132,7 +132,7 @@ public:
 
 public:
     void setSceneManager(Ogre::SceneManager* sceneManager);
-    void drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera);
+    void drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera, Ogre::RenderTargetViewDef const* rtv);
 
     void addDrawCommand(DrawCommand const& command);
     void injectNewRenderable(DrawCommand& command, Ogre::MaterialPtr const& material = nullptr);
@@ -144,6 +144,7 @@ private:
     struct RenderContext
     {
         Ogre::RenderPassDescriptor* passDesc;
+        Ogre::TextureGpu*           rtt;
         size_t                      textureId;
     };
 

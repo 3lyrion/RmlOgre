@@ -28,6 +28,7 @@
 #include "Vao/OgreIndirectBufferPacked.h"
 #include "Vao/OgreVaoManager.h"
 #include "Vao/OgreVertexArrayObject.h"
+#include "Compositor/OgreTextureDefinition.h"
 
 using namespace OgreRmlUi;
 
@@ -188,7 +189,7 @@ Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, float v
     texture->setNumMipmaps(1);
     texture->setResolution((uint32)std::ceil(vpWidth), (uint32)std::ceil(vpHeight));
     texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
-    texture->setSampleDescription(mainRTT.getSampleDescription());
+    //texture->setSampleDescription(mainRTT.getSampleDescription());
     texture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
     texture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
     return texture;
@@ -218,7 +219,7 @@ Ogre::Matrix4 RenderInterface::getProjectionMatrix( Ogre::RenderSystem* rs, cons
     return projectionMatrix;
 }
 
-void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera)
+void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera, Ogre::RenderTargetViewDef const* rtv)
 {
     auto*      renderSystem            = m_sceneManager->getDestinationRenderSystem();
     const bool supportsIndirectBuffers = VAOManager->supportsIndirectBuffers();
@@ -299,23 +300,34 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     auto lastClipMaskOp     = ClipMaskOperation::None;
     auto lastTransformIdx   = UINT16_MAX - 1;
 
+    Ogre::RenderPassDescriptor* currentPassDesc = nullptr;
+
+    FlatSet<size_t> savedLayerTextureIds;
+
     size_t indirectIdx = 0;
     for (size_t i = 0; i < numNeededDraws; i++)
     {
+        if (lastType == DrawCommand::Type::CompositeLayers)
+        {
+            auto& currentLayer = m_renderStack.back();
+            renderSystem->beginRenderPassDescriptor(currentLayer.passDesc, currentLayer.rtt, 0, &viewportSize, &viewportSize, 1, false, false);
+            renderSystem->executeRenderPassDescriptorDelayedActions();
+        }
+
         auto& cmd = m_drawCommands[i];
         switch (cmd.type)
         {
         case DrawCommand::Type::PushLayer:
         {
-            if (i != 0)
+            if (currentPassDesc)
             {
                 int flags = Ogre::RenderPassDescriptor::Colour;
                 if (lastClipMaskOp != ClipMaskOperation::None)
                 {
                     flags |= Ogre::RenderPassDescriptor::Stencil;
                 }
-                renderPassDesc->entriesModified(flags);
-                renderSystem->endRenderPassDescriptor();
+                currentPassDesc->entriesModified(flags);
+                //renderSystem->endRenderPassDescriptor();
             }
 
             auto* layerTex  = acquireLayerTexture(cmd.textureId, vpWidth, vpHeight, *renderPassDesc->mColour->texture);
@@ -323,39 +335,42 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             auto& colourBuf = layerDesc->mColour[0];
             colourBuf.texture     = layerTex;
             colourBuf.loadAction  = Ogre::LoadAction::Clear;
-            colourBuf.storeAction = Ogre::StoreAction::StoreOrResolve;
-            colourBuf.clearColour = Ogre::ColourValue::ZERO;
+            colourBuf.storeAction = Ogre::StoreAction::Store;
+            colourBuf.clearColour = Ogre::ColourValue::White; /*Ogre::ColourValue(0.0f, 0.0f, 0.0f);*/
             //layerDesc->mDepth   = renderPassDesc->mDepth;
             //layerDesc->mStencil = renderPassDesc->mStencil;
             layerDesc->entriesModified(Ogre::RenderPassDescriptor::All);
 
             renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &viewportSize, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
-            m_renderStack.push_back({ layerDesc, cmd.textureId });
+            m_renderStack.push_back({ layerDesc, layerTex, cmd.textureId });
+            currentPassDesc = layerDesc;
+
+            lastType = cmd.type;
         }
         continue;
 
         case DrawCommand::Type::PopLayer:
         {
+            auto& layer = m_renderStack.back();
             renderSystem->endRenderPassDescriptor();
+            renderSystem->destroyRenderPassDescriptor(layer.passDesc);
+
+            if (!savedLayerTextureIds.count(layer.textureId))
+                m_garbageTextureIds.push_back(layer.textureId);
 
             m_renderStack.pop_back();
 
+            currentPassDesc = nullptr;
             lastType = cmd.type;
-
-            //auto& context = m_renderStack.back();
-
-            //renderSystem->beginRenderPassDescriptor(context.passDesc, context.target, 0, &viewportSize, &viewportSize, 1, false, false);
-            //renderSystem->executeRenderPassDescriptorDelayedActions();
         }
         continue;
 
         case DrawCommand::Type::SaveLayerAsTexture:
         {
-            auto& layerTexture = m_textures[m_renderStack.back().textureId];
-            assert(layerTexture);
-            m_textures[cmd.textureId] = layerTexture;
-            layerTexture = nullptr;
+            auto& layer = m_renderStack.back();
+            m_textures[cmd.textureId] = layer.rtt;
+            savedLayerTextureIds.insert(layer.textureId);
         }
         continue;
 
@@ -378,12 +393,14 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             auto& dstContext = m_renderStack[cmd.destLayerIndex];
             auto& srcContext = m_renderStack[cmd.srcLayerIndex];
 
-            renderSystem->endRenderPassDescriptor();
+            //renderSystem->endRenderPassDescriptor();
 
-            renderSystem->beginRenderPassDescriptor(dstContext.passDesc, m_textures.at(dstContext.textureId), 0, &viewportSize, &viewportSize, 1, false, false);
+            renderSystem->beginRenderPassDescriptor(dstContext.passDesc, dstContext.rtt, 0, &viewportSize, &viewportSize, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
+
             cmd.renderable = &renderable;
             cmd.textureId  = srcContext.textureId;
+            m_garbageRenderables.push_back(cmd.renderable);
         }
         break;
 
@@ -417,7 +434,47 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             scissors = Ogre::Vector4(left, top, width, height);
         }
 
+        if (cmd.type == DrawCommand::Type::CompositeLayers)
+        {
+        }
+        else if (lastType != cmd.type || lastScissorEnabled != cmd.scissorEnabled || lastTransformIdx != cmd.transformIndex
+            || lastStencilValue != cmd.stencilValue || lastClipMaskOp != cmd.clipMaskOp || lastScissors != scissors)
+        {
+            RenderContext* layer = nullptr;
+            if (!m_renderStack.empty())
+                layer = &m_renderStack.back();
+
+            if (currentPassDesc)
+            {
+                int flags = Ogre::RenderPassDescriptor::Colour;
+                if (lastClipMaskOp != ClipMaskOperation::None)
+                {
+                    flags |= Ogre::RenderPassDescriptor::Stencil;
+                }
+                currentPassDesc->entriesModified(flags);
+                //renderSystem->endRenderPassDescriptor();
+            }
+
+            lastType           = cmd.type;
+            lastScissors       = scissors;
+            lastScissorEnabled = cmd.scissorEnabled;
+            lastStencilValue   = cmd.stencilValue;
+            lastClipMaskOp     = cmd.clipMaskOp;
+            lastTransformIdx   = cmd.transformIndex;
+
+            {
+                auto desc = layer ? layer->passDesc : renderPassDesc;
+                auto rtt  = layer ? layer->rtt : anyTargetTexture;
+                renderSystem->beginRenderPassDescriptor(desc, rtt, 0, &viewportSize, &scissors, 1, false, false);
+                renderSystem->executeRenderPassDescriptorDelayedActions();
+                currentPassDesc = desc;
+            }
+        }
+        else
+            skippedPasses++;
+
         Ogre::StencilParams stencilParams;
+        uint32              stencilValue  = 0;
         if (cmd.type == DrawCommand::Type::ClipMask)
         {
             stencilParams.enabled = true;
@@ -454,35 +511,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 renderSystem->setStencilBufferParams(0, stencilParams);
             }
         }
-
-        if (lastType != cmd.type || lastScissorEnabled != cmd.scissorEnabled || lastTransformIdx != cmd.transformIndex
-            || lastStencilValue != cmd.stencilValue || lastClipMaskOp != cmd.clipMaskOp || lastScissors != scissors)
-        {
-            if (i != 0 && m_renderStack.empty() && renderSystem->getCurrentPassDescriptor())
-            {
-                int flags = Ogre::RenderPassDescriptor::Colour;
-                if (lastClipMaskOp != ClipMaskOperation::None)
-                {
-                    flags |= Ogre::RenderPassDescriptor::Stencil;
-                }
-                renderPassDesc->entriesModified(flags);
-                renderSystem->endRenderPassDescriptor();
-            }
-            lastType           = cmd.type;
-            lastScissors       = scissors;
-            lastScissorEnabled = cmd.scissorEnabled;
-            lastStencilValue   = cmd.stencilValue;
-            lastClipMaskOp     = cmd.clipMaskOp;
-            lastTransformIdx   = cmd.transformIndex;
-
-            if (m_renderStack.empty())
-            {
-                renderSystem->beginRenderPassDescriptor(renderPassDesc, anyTargetTexture, 0, &viewportSize, &scissors, 1, false, false);
-                renderSystem->executeRenderPassDescriptorDelayedActions();
-            }
-        }
-        else
-            skippedPasses++;
 
         if (cmd.textureId)
         {
@@ -522,8 +550,9 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         indirectIdx++;
     }
 
-    if (numNeededDraws > 0)
+    if (currentPassDesc)
     {
+        assert(currentPassDesc == renderPassDesc);
         renderPassDesc->mReadyWindowForPresent = true;
         renderPassDesc->entriesModified(Ogre::RenderPassDescriptor::Colour);
         renderSystem->endRenderPassDescriptor();

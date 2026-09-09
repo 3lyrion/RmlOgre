@@ -38,6 +38,7 @@ namespace
         Ogre::SceneManager*      m_sceneManager;
         Ogre::Camera*            m_camera;
         RenderInterface*         m_manager;
+        Ogre::RenderTargetViewDef const* m_rtv;
     };
 }
 
@@ -79,10 +80,10 @@ CompositorPass::CompositorPass(CompositorPassDef const* definition, Ogre::Camera
     m_sceneManager      (sceneManager),
     m_camera            (defaultCamera),
     m_manager           (Manager),
-    m_definition        (definition)
+    m_definition        (definition),
+    m_rtv               (rtv)
 {
     initialize(rtv);
-
     m_manager->setSceneManager(sceneManager);
 }
 //-----------------------------------------------------------------------------------
@@ -108,7 +109,7 @@ void CompositorPass::execute( const Ogre::Camera* /*lodCamera*/ )
 
     notifyPassPreExecuteListeners();
 
-    m_manager->drawIntoCompositor(mRenderPassDesc, mAnyTargetTexture, m_camera);
+    m_manager->drawIntoCompositor(mRenderPassDesc, mAnyTargetTexture, m_camera, m_rtv);
     m_sceneManager->_setCurrentCompositorPass(0);
 
     notifyPassPosExecuteListeners();
