@@ -173,7 +173,7 @@ void RenderInterface::createMaskMaterial()
     pass->setBlendblock(maskBlendblock);
 }
 
-Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, float vpWidth, float vpHeight, Ogre::TextureGpu& mainRTT)
+Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, uint vpWidth, uint vpHeight, Ogre::TextureGpu& mainRTT)
 {
     auto& texture = m_textures[textureId];
     if (texture)
@@ -187,7 +187,7 @@ Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, float v
         Ogre::TextureFlags::RenderToTexture,
         Ogre::TextureTypes::Type2D);
     texture->setNumMipmaps(1);
-    texture->setResolution((uint32)std::ceil(vpWidth), (uint32)std::ceil(vpHeight));
+    texture->setResolution(vpWidth, vpHeight);
     texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
     //texture->setSampleDescription(mainRTT.getSampleDescription());
     texture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
@@ -226,6 +226,8 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     const auto numNeededDraws          = m_drawCommands.size();
     const bool bWasReadyForPresent     = renderPassDesc->mReadyWindowForPresent;
     const auto viewportSize            = Ogre::Vector4( 0, 0, 1, 1 );
+    const auto vpWidth                 = (float)anyTargetTexture->getWidth();
+    const auto vpHeight                = (float)anyTargetTexture->getHeight();
     Ogre::RenderingMetrics stats;
 
     unsigned char *indirectDraw = 0;
@@ -255,9 +257,18 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         for (size_t i = 0; i < numNeededDraws; ++i)
         {
             auto& cmd        = m_drawCommands[i];
-            auto* renderable = cmd.renderable;
+            auto& renderable = cmd.renderable;
             if (!renderable)
-                continue;
+            {
+                if (cmd.type != DrawCommand::Type::CompositeLayers)
+                    continue;
+
+                Rml::Mesh mesh;
+                Rml::MeshUtilities::GenerateQuad(mesh, { 0.0f, 0.0f }, { vpWidth, vpHeight }, { 255, 255, 255, 255 });
+
+                renderable = &m_memoryManager.create<Renderable>();
+                renderable->updateVertexData(mesh.vertices, mesh.indices, VAOManager);
+            }
 
             auto* vao = renderable->getVaos(Ogre::VpNormal)[0];
 
@@ -288,8 +299,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     else if (VAOManager->supportsBaseInstance())
         baseInstanceAndIndirectBuffers = 1;
 
-    const float vpWidth    = float( anyTargetTexture->getWidth() );
-    const float vpHeight   = float( anyTargetTexture->getHeight() );
     const auto  projMatrix = getProjectionMatrix(renderSystem, renderPassDesc->requiresTextureFlipping(), currentCamera, vpWidth, vpHeight);
     auto translationMatrix = Ogre::Matrix4::IDENTITY;
 
@@ -307,14 +316,30 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
     size_t indirectIdx = 0;
     for (size_t i = 0; i < numNeededDraws; i++)
     {
+        auto& cmd = m_drawCommands[i];
+
+        Ogre::Vector4 scissors = viewportSize;
+        if (cmd.scissorEnabled)
+        {
+            auto scLeft   = Ogre::Math::Clamp(cmd.scissor.x, 0.0f, vpWidth );
+            auto scTop    = Ogre::Math::Clamp(cmd.scissor.y, 0.0f, vpHeight);
+            auto scRight  = Ogre::Math::Clamp(cmd.scissor.z, 0.0f, vpWidth );
+            auto scBottom = Ogre::Math::Clamp(cmd.scissor.w, 0.0f, vpHeight);
+
+            auto left   = scLeft / vpWidth;
+            auto top    = scTop / vpHeight;
+            auto width  = (scRight - scLeft) / vpWidth;
+            auto height = (scBottom - scTop) / vpHeight;
+            scissors = Ogre::Vector4(left, top, width, height);
+        }
+
         if (lastType == DrawCommand::Type::CompositeLayers)
         {
             auto& currentLayer = m_renderStack.back();
-            renderSystem->beginRenderPassDescriptor(currentLayer.passDesc, currentLayer.rtt, 0, &viewportSize, &viewportSize, 1, false, false);
+            renderSystem->beginRenderPassDescriptor(currentLayer.passDesc, currentLayer.rtt, 0, &viewportSize, &scissors, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
         }
 
-        auto& cmd = m_drawCommands[i];
         switch (cmd.type)
         {
         case DrawCommand::Type::PushLayer:
@@ -330,18 +355,23 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 //renderSystem->endRenderPassDescriptor();
             }
 
-            auto* layerTex  = acquireLayerTexture(cmd.textureId, vpWidth, vpHeight, *renderPassDesc->mColour->texture);
+            auto depthStencilTexture = TextureManager->findTextureNoThrow(rtv->depthAttachment.textureName);
+
+            auto* layerTex  = acquireLayerTexture(cmd.textureId, uint32(vpWidth), uint32(vpHeight), *renderPassDesc->mColour->texture);
             auto* layerDesc = renderSystem->createRenderPassDescriptor();
             auto& colourBuf = layerDesc->mColour[0];
             colourBuf.texture     = layerTex;
             colourBuf.loadAction  = Ogre::LoadAction::Clear;
             colourBuf.storeAction = Ogre::StoreAction::Store;
             colourBuf.clearColour = Ogre::ColourValue::White; /*Ogre::ColourValue(0.0f, 0.0f, 0.0f);*/
-            //layerDesc->mDepth   = renderPassDesc->mDepth;
-            //layerDesc->mStencil = renderPassDesc->mStencil;
+            layerDesc->mDepth.texture     = depthStencilTexture; // Shared
+            layerDesc->mDepth.loadAction  = Ogre::LoadAction::Load;
+            layerDesc->mDepth.storeAction = Ogre::StoreAction::Store;
+            layerDesc->mStencil.loadAction  = Ogre::LoadAction::Load;
+            layerDesc->mStencil.storeAction = Ogre::StoreAction::Store;
             layerDesc->entriesModified(Ogre::RenderPassDescriptor::All);
 
-            renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &viewportSize, 1, false, false);
+            renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &scissors, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
             m_renderStack.push_back({ layerDesc, layerTex, cmd.textureId });
             currentPassDesc = layerDesc;
@@ -368,7 +398,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
         case DrawCommand::Type::SaveLayerAsTexture:
         {
-            auto& layer = m_renderStack.back();
+            auto& layer = m_renderStack[cmd.destLayerIndex];
             m_textures[cmd.textureId] = layer.rtt;
             savedLayerTextureIds.insert(layer.textureId);
         }
@@ -376,30 +406,23 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
         case DrawCommand::Type::CompositeLayers:
         {
-            Rml::Mesh mesh;
-            Rml::MeshUtilities::GenerateQuad(mesh, { 0.0f, 0.0f }, { vpWidth, vpHeight }, { 255, 255, 255, 255 });
-
-            auto& renderable = m_memoryManager.create<Renderable>();
-            renderable.updateVertexData(mesh.vertices, mesh.indices, VAOManager);
-
             auto material   = m_baseMaterial->clone("");
             auto blendblock = m_blendblock;
             if (cmd.blendMode == BlendMode::Replace)
                 blendblock.setBlendType(Ogre::SBT_REPLACE);
             material->setBlendblock(blendblock);
 
-            renderable.setMaterial(material);
+            cmd.renderable->setMaterial(material);
 
             auto& dstContext = m_renderStack[cmd.destLayerIndex];
             auto& srcContext = m_renderStack[cmd.srcLayerIndex];
 
             //renderSystem->endRenderPassDescriptor();
 
-            renderSystem->beginRenderPassDescriptor(dstContext.passDesc, dstContext.rtt, 0, &viewportSize, &viewportSize, 1, false, false);
+            renderSystem->beginRenderPassDescriptor(dstContext.passDesc, dstContext.rtt, 0, &viewportSize, &scissors, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
 
-            cmd.renderable = &renderable;
-            cmd.textureId  = srcContext.textureId;
+            cmd.textureId = srcContext.textureId;
             m_garbageRenderables.push_back(cmd.renderable);
         }
         break;
@@ -418,21 +441,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                     "recently created and VaoRenderInterface::_beginFrame() wasn't called" );
 
         auto* pass = renderable->getMaterial()->getTechnique(0)->getPass(0);
-
-        Ogre::Vector4 scissors = viewportSize;
-        if (cmd.scissorEnabled)
-        {
-            auto scLeft   = Ogre::Math::Clamp(cmd.scissor.x, 0.0f, vpWidth );
-            auto scTop    = Ogre::Math::Clamp(cmd.scissor.y, 0.0f, vpHeight);
-            auto scRight  = Ogre::Math::Clamp(cmd.scissor.z, 0.0f, vpWidth );
-            auto scBottom = Ogre::Math::Clamp(cmd.scissor.w, 0.0f, vpHeight);
-
-            auto left   = scLeft / vpWidth;
-            auto top    = scTop / vpHeight;
-            auto width  = (scRight - scLeft) / vpWidth;
-            auto height = (scBottom - scTop) / vpHeight;
-            scissors = Ogre::Vector4(left, top, width, height);
-        }
 
         if (cmd.type == DrawCommand::Type::CompositeLayers)
         {
@@ -464,7 +472,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
             {
                 auto desc = layer ? layer->passDesc : renderPassDesc;
-                auto rtt  = layer ? layer->rtt : anyTargetTexture;
+                auto rtt  = layer ? layer->rtt      : anyTargetTexture;
                 renderSystem->beginRenderPassDescriptor(desc, rtt, 0, &viewportSize, &scissors, 1, false, false);
                 renderSystem->executeRenderPassDescriptorDelayedActions();
                 currentPassDesc = desc;
@@ -827,8 +835,11 @@ void RenderInterface::RenderToClipMask(
 Rml::LayerHandle RenderInterface::PushLayer()
 {
     auto& cmd = m_drawCommands.emplace_back();
-    cmd.type      = DrawCommand::Type::PushLayer;
-    cmd.textureId = ++m_textureIdCounter;
+    cmd.type           = DrawCommand::Type::PushLayer;
+    cmd.textureId      = ++m_textureIdCounter;
+    cmd.scissor        = m_scissorRef;
+    cmd.scissorEnabled = m_scissorEnabled;
+
     m_layerIndexRef++;
     m_layerIndexMax = std::max(m_layerIndexMax, m_layerIndexRef);
     return m_layerIndexRef + 1;
@@ -847,7 +858,7 @@ void RenderInterface::CompositeLayers(
     cmd.blendMode      = BlendMode(blend_mode);
     if (!filters.empty())
     {
-        cmd.filterSetIndex = m_filterSets.size();
+        cmd.filterSetIndex = (uint16)m_filterSets.size();
         auto& filterSet = m_filterSets.emplace_back();
         filterSet.reserve(filters.size());
         for (auto filter : filters)

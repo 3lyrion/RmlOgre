@@ -196,7 +196,7 @@ private:
     void createBaseMaterial();
     void createMaskMaterial();
 
-    Ogre::TextureGpu* acquireLayerTexture(size_t textureId, float vpWidth, float vpHeight, Ogre::TextureGpu& mainRTT);
+    Ogre::TextureGpu* acquireLayerTexture(size_t textureId, uint vpWidth, uint vpHeight, Ogre::TextureGpu& mainRTT);
 
     Ogre::Matrix4 getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
                                     const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const;
