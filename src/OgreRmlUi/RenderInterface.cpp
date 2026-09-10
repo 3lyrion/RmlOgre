@@ -317,7 +317,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
     Ogre::RenderPassDescriptor* currentPassDesc = nullptr;
 
-    FlatSet<size_t> savedLayerTextureIds;
+    Ogre::TextureGpu* layerDepthTexture = nullptr;
 
     size_t indirectIdx = 0;
     for (size_t i = 0; i < numNeededDraws; i++)
@@ -336,7 +336,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             auto top    = scTop / vpHeight;
             auto width  = (scRight - scLeft) / vpWidth;
             auto height = (scBottom - scTop) / vpHeight;
-            scissors = Ogre::Vector4(left, /*(vpHeight - scBottom) / vpHeight*/top, width, height);
+            scissors = Ogre::Vector4(left, top, width, height);
         }
 
         if (lastType == DrawCommand::Type::CompositeLayers)
@@ -361,7 +361,20 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 //renderSystem->endRenderPassDescriptor();
             }
 
-            auto depthStencilTexture = TextureManager->findTextureNoThrow(rtv->depthAttachment.textureName);
+            //auto depthStencilTexture = TextureManager->findTextureNoThrow(rtv->depthAttachment.textureName);
+
+            if (!layerDepthTexture)
+            {
+                layerDepthTexture = TextureManager->createTexture("!!OgreRmlUi_LayerDepthTex_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>()),
+                    Ogre::GpuPageOutStrategy::Discard,
+                    Ogre::TextureFlags::RenderToTexture,
+                    Ogre::TextureTypes::Type2D);
+                layerDepthTexture->setNumMipmaps(1);
+                layerDepthTexture->setResolution((uint)(vpWidth), (uint32)(vpHeight));
+                layerDepthTexture->setPixelFormat(Ogre::PixelFormatGpu::PFG_D32_FLOAT_S8X24_UINT);
+                layerDepthTexture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
+                layerDepthTexture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
+            }
 
             auto* layerTex  = acquireLayerTexture(cmd.textureId, uint32(vpWidth), uint32(vpHeight), *renderPassDesc->mColour->texture);
             auto* layerDesc = renderSystem->createRenderPassDescriptor();
@@ -369,12 +382,13 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             colourBuf.texture     = layerTex;
             colourBuf.loadAction  = Ogre::LoadAction::Clear;
             colourBuf.storeAction = Ogre::StoreAction::Store;
-            colourBuf.clearColour = Ogre::ColourValue::ZERO; /*Ogre::ColourValue(0.0f, 0.0f, 0.0f);*/
-            layerDesc->mDepth.texture     = depthStencilTexture; // Shared
-            layerDesc->mDepth.loadAction  = Ogre::LoadAction::Load;
+            colourBuf.clearColour = Ogre::ColourValue::ZERO;
+            layerDesc->mDepth.texture     = layerDepthTexture; // Shared
+            layerDesc->mDepth.loadAction  = Ogre::LoadAction::Clear;
             layerDesc->mDepth.storeAction = Ogre::StoreAction::Store;
-            layerDesc->mStencil.loadAction  = Ogre::LoadAction::Load;
+            layerDesc->mStencil.loadAction  = Ogre::LoadAction::Clear;
             layerDesc->mStencil.storeAction = Ogre::StoreAction::Store;
+            layerDesc->mStencil.clearStencil = 0;
             layerDesc->entriesModified(Ogre::RenderPassDescriptor::All);
 
             renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &viewportSize, 1, false, false);
@@ -383,8 +397,11 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             currentPassDesc = layerDesc;
 
             lastType = cmd.type;
+            lastScissors = viewportSize;
 
             colourBuf.loadAction = Ogre::LoadAction::Load;
+            layerDesc->mDepth.loadAction  = Ogre::LoadAction::Load;
+            layerDesc->mStencil.loadAction  = Ogre::LoadAction::Load;
         }
         continue;
 
@@ -393,10 +410,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             auto& layer = m_renderStack.back();
             renderSystem->endRenderPassDescriptor();
             renderSystem->destroyRenderPassDescriptor(layer.passDesc);
-
-            if (!savedLayerTextureIds.count(layer.textureId))
-                m_garbageTextureIds.push_back(layer.textureId);
-
             m_renderStack.pop_back();
 
             currentPassDesc = nullptr;
@@ -412,42 +425,36 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             if (restartPass)
                 renderSystem->endRenderPassDescriptor();
 
-            auto scX      = scissors.x * vpWidth;
-            auto scY      = scissors.y * vpHeight;
-            auto scWidth  = scissors.w * vpWidth;
-            auto scHeight = scissors.z * vpHeight;
-
             auto* texture = TextureManager->createTexture("!!OgreRmlUi_LayerTex_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>()),
                 Ogre::GpuPageOutStrategy::Discard,
                 Ogre::TextureFlags::RenderToTexture,
                 Ogre::TextureTypes::Type2D);
             texture->setNumMipmaps(1);
-            texture->setResolution((uint)(scWidth), (uint32)(scHeight));
+            texture->setResolution((uint)(cmd.scissor.z), (uint32)(cmd.scissor.w));
             texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
             texture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
             texture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
 
             auto srcBox = texture->getEmptyBox(0);
             auto dstBox = srcBox;
-            srcBox.x = (uint32)scX;
-            srcBox.y = (uint32)scY;
+            srcBox.x = (uint)(cmd.scissor.z);
+            srcBox.y = (uint32)(cmd.scissor.w);
 
             //Ogre::Image2 image;
-            //image.convertFromTexture(renderPassDesc->mColour[0].texture, 0, 0);
+            //image.convertFromTexture(layer.rtt, 0, 0);
             //image.save("1.png", 0, 1);
 
-
             layer.rtt->copyTo(texture, dstBox, 0, srcBox, 0);
-            //texture->notifyDataIsReady();
-            //texture->notifyDataIsReady();
 
             m_textures[cmd.textureId] = texture;
 
             if (restartPass)
             {
-                renderSystem->beginRenderPassDescriptor(currentPassDesc, layer.rtt, 0, &viewportSize, &scissors, 1, false, false);
+                renderSystem->beginRenderPassDescriptor(currentPassDesc, layer.rtt, 0, &viewportSize, &lastScissors, 1, false, false);
                 renderSystem->executeRenderPassDescriptorDelayedActions();
             }
+
+            lastType = cmd.type;
         }
         continue;
 
@@ -466,7 +473,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
             //renderSystem->endRenderPassDescriptor();
 
-            renderSystem->beginRenderPassDescriptor(dstContext.passDesc, dstContext.rtt, 0, &viewportSize, &scissors, 1, false, false);
+            renderSystem->beginRenderPassDescriptor(dstContext.passDesc, dstContext.rtt, 0, &viewportSize, &lastScissors, 1, false, false);
             renderSystem->executeRenderPassDescriptorDelayedActions();
 
             cmd.textureId = srcContext.textureId;
@@ -492,7 +499,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         if (cmd.type == DrawCommand::Type::CompositeLayers)
         {
         }
-        else if (lastType != cmd.type || lastScissorEnabled != cmd.scissorEnabled || lastTransformIdx != cmd.transformIndex
+        else if (lastScissorEnabled != cmd.scissorEnabled || lastTransformIdx != cmd.transformIndex
             || lastStencilValue != cmd.stencilValue || lastClipMaskOp != cmd.clipMaskOp || lastScissors != scissors)
         {
             RenderContext* layer = nullptr;
@@ -510,7 +517,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 //renderSystem->endRenderPassDescriptor();
             }
 
-            lastType           = cmd.type;
             lastScissors       = scissors;
             lastScissorEnabled = cmd.scissorEnabled;
             lastStencilValue   = cmd.stencilValue;
@@ -520,7 +526,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             {
                 auto desc = layer ? layer->passDesc : renderPassDesc;
                 auto rtt  = layer ? layer->rtt      : anyTargetTexture;
-                desc->mColour[0].loadAction = Ogre::LoadAction::Load;
                 renderSystem->beginRenderPassDescriptor(desc, rtt, 0, &viewportSize, &scissors, 1, false, false);
                 renderSystem->executeRenderPassDescriptorDelayedActions();
                 currentPassDesc = desc;
@@ -529,23 +534,18 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         else
             skippedPasses++;
 
+        lastType = cmd.type;
+
         Ogre::StencilParams stencilParams;
         uint32              stencilValue  = 0;
         if (cmd.type == DrawCommand::Type::ClipMask)
         {
             stencilParams.enabled = true;
 
-            if (cmd.clipMaskOp == ClipMaskOperation::Set)
+            if (cmd.clipMaskOp == ClipMaskOperation::Set || cmd.clipMaskOp == ClipMaskOperation::SetInverse)
             {
                 stencilParams.stencilFront.compareOp     = Ogre::CMPF_ALWAYS_PASS;
                 stencilParams.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
-                stencilParams.stencilBack                = stencilParams.stencilFront;
-                renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
-            }
-            else if (cmd.clipMaskOp == ClipMaskOperation::SetInverse)
-            {
-                stencilParams.stencilFront.compareOp     = Ogre::CMPF_NOT_EQUAL;
-                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
                 stencilParams.stencilBack                = stencilParams.stencilFront;
                 renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
             }
@@ -554,7 +554,8 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 stencilParams.stencilFront.compareOp     = Ogre::CMPF_EQUAL;
                 stencilParams.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
                 stencilParams.stencilBack                = stencilParams.stencilFront;
-                renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
+                // Previous
+                renderSystem->setStencilBufferParams(cmd.stencilValue - 1, stencilParams);
             }
         }
         else if (cmd.type == DrawCommand::Type::Geometry)
@@ -563,12 +564,15 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             {
                 stencilParams.enabled                    = true;
                 stencilParams.stencilFront.stencilPassOp = Ogre::SOP_KEEP;
-                stencilParams.stencilFront.compareOp     = Ogre::CMPF_EQUAL;
+                stencilParams.stencilFront.compareOp     = cmd.clipMaskOp == ClipMaskOperation::SetInverse ? Ogre::CMPF_NOT_EQUAL : Ogre::CMPF_EQUAL;
                 stencilParams.stencilBack                = stencilParams.stencilFront;
                 renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
             }
             else
+            {
+                stencilParams.enabled = false;
                 renderSystem->setStencilBufferParams(0, stencilParams);
+            }
         }
 
         if (cmd.textureId)
@@ -608,6 +612,9 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
         indirectIdx++;
     }
+
+    if (layerDepthTexture)
+        TextureManager->destroyTexture(layerDepthTexture);
 
     if (currentPassDesc)
     {
@@ -730,7 +737,6 @@ void RenderInterface::BeginFrame()
     m_scissorEnabled = false;
     m_clipMaskEnabled = false;
     m_stencilRefValue = 0;
-    m_stencilBaseValue = 0;
     m_transformRefIndex = UINT16_MAX;
     m_transforms.clear();
 }
@@ -858,19 +864,7 @@ void RenderInterface::RenderToClipMask(
     Rml::CompiledGeometryHandle geometry,
     Rml::Vector2f translation)
 {
-    if (operation == Rml::ClipMaskOperation::Set)
-    {
-        m_stencilRefValue++;
-    }
-    else if (operation == Rml::ClipMaskOperation::SetInverse)
-    {
-        //m_stencilBaseValue += 1;
-        //m_stencilRefValue = m_stencilBaseValue + 1;
-    }
-    else if (operation == Rml::ClipMaskOperation::Intersect)
-    {
-        //m_stencilRefValue += 1;
-    }
+    m_stencilRefValue++;
     m_clipMaskOpRef = ClipMaskOperation(operation);
 
     auto& cmd = m_drawCommands.emplace_back();

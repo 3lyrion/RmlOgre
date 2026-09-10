@@ -153,7 +153,6 @@ private:
     bool                 m_scissorEnabled    = false;
     bool                 m_clipMaskEnabled   = false;
     ClipMaskOperation    m_clipMaskOpRef     = ClipMaskOperation::None;
-    uint16               m_stencilBaseValue  = 0;
     uint16               m_stencilRefValue   = 0;
     uint16               m_transformRefIndex = UINT16_MAX;
     int16                m_layerIndexRef     = -1;
