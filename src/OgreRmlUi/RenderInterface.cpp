@@ -325,19 +325,19 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         auto& cmd = m_drawCommands[i];
 
         Ogre::Vector4 scissors = viewportSize;
-        //if (cmd.scissorEnabled)
-        //{
-        //    auto scLeft   = Ogre::Math::Clamp(cmd.scissor.x, 0.0f, vpWidth );
-        //    auto scTop    = Ogre::Math::Clamp(cmd.scissor.y, 0.0f, vpHeight);
-        //    auto scRight  = Ogre::Math::Clamp(cmd.scissor.z, 0.0f, vpWidth );
-        //    auto scBottom = Ogre::Math::Clamp(cmd.scissor.w, 0.0f, vpHeight);
+        if (cmd.scissorEnabled)
+        {
+            auto scLeft   = Ogre::Math::Clamp(cmd.scissor.x, 0.0f, vpWidth );
+            auto scTop    = Ogre::Math::Clamp(cmd.scissor.y, 0.0f, vpHeight);
+            auto scRight  = Ogre::Math::Clamp(cmd.scissor.z, 0.0f, vpWidth );
+            auto scBottom = Ogre::Math::Clamp(cmd.scissor.w, 0.0f, vpHeight);
 
-        //    auto left   = scLeft / vpWidth;
-        //    auto top    = scTop / vpHeight;
-        //    auto width  = (scRight - scLeft) / vpWidth;
-        //    auto height = (scBottom - scTop) / vpHeight;
-        //    scissors = Ogre::Vector4(left, top, width, height);
-        //}
+            auto left   = scLeft / vpWidth;
+            auto top    = scTop / vpHeight;
+            auto width  = (scRight - scLeft) / vpWidth;
+            auto height = (scBottom - scTop) / vpHeight;
+            scissors = Ogre::Vector4(left, /*(vpHeight - scBottom) / vpHeight*/top, width, height);
+        }
 
         if (lastType == DrawCommand::Type::CompositeLayers)
         {
@@ -412,24 +412,29 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             if (restartPass)
                 renderSystem->endRenderPassDescriptor();
 
+            auto scX      = scissors.x * vpWidth;
+            auto scY      = scissors.y * vpHeight;
+            auto scWidth  = scissors.w * vpWidth;
+            auto scHeight = scissors.z * vpHeight;
+
             auto* texture = TextureManager->createTexture("!!OgreRmlUi_LayerTex_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>()),
                 Ogre::GpuPageOutStrategy::Discard,
                 Ogre::TextureFlags::RenderToTexture,
                 Ogre::TextureTypes::Type2D);
             texture->setNumMipmaps(1);
-            texture->setResolution((uint)(cmd.scissor.z), (uint32)(cmd.scissor.w));
+            texture->setResolution((uint)(scWidth), (uint32)(scHeight));
             texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
             texture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
             texture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
 
             auto srcBox = texture->getEmptyBox(0);
             auto dstBox = srcBox;
-            srcBox.x = (uint32)cmd.scissor.x;
-            srcBox.y = (uint32)cmd.scissor.y;
+            srcBox.x = (uint32)scX;
+            srcBox.y = (uint32)scY;
 
-            Ogre::Image2 image;
-            image.convertFromTexture(renderPassDesc->mColour[0].texture, 0, 0);
-            image.save("1.png", 0, 1);
+            //Ogre::Image2 image;
+            //image.convertFromTexture(renderPassDesc->mColour[0].texture, 0, 0);
+            //image.save("1.png", 0, 1);
 
 
             layer.rtt->copyTo(texture, dstBox, 0, srcBox, 0);
@@ -524,44 +529,47 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         else
             skippedPasses++;
 
-        //Ogre::StencilParams stencilParams;
-        //uint32              stencilValue  = 0;
-        //if (cmd.type == DrawCommand::Type::ClipMask)
-        //{
-        //    stencilParams.enabled = true;
+        Ogre::StencilParams stencilParams;
+        uint32              stencilValue  = 0;
+        if (cmd.type == DrawCommand::Type::ClipMask)
+        {
+            stencilParams.enabled = true;
 
-        //    if (cmd.clipMaskOp == ClipMaskOperation::Set || cmd.clipMaskOp == ClipMaskOperation::SetInverse)
-        //    {
-        //        stencilParams.stencilFront.compareOp     = Ogre::CMPF_ALWAYS_PASS;
-        //        stencilParams.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
-        //        stencilParams.stencilBack                = stencilParams.stencilFront;
-        //        renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
-        //    }
-        //    else if (cmd.clipMaskOp == ClipMaskOperation::Intersect)
-        //    {
-        //        stencilParams.stencilFront.compareOp     = Ogre::CMPF_EQUAL;
-        //        stencilParams.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
-        //        stencilParams.stencilBack                = stencilParams.stencilFront;
-        //        // Previous
-        //        renderSystem->setStencilBufferParams(cmd.stencilValue - 1, stencilParams);
-        //    }
-        //}
-        //else if (cmd.type == DrawCommand::Type::Geometry)
-        //{
-        //    if (cmd.clipMaskOp != ClipMaskOperation::None)
-        //    {
-        //        stencilParams.enabled                    = true;
-        //        stencilParams.stencilFront.stencilPassOp = Ogre::SOP_KEEP;
-        //        stencilParams.stencilFront.compareOp     = cmd.clipMaskOp == ClipMaskOperation::SetInverse ? Ogre::CMPF_NOT_EQUAL : Ogre::CMPF_EQUAL;
-        //        stencilParams.stencilBack                = stencilParams.stencilFront;
-        //        renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
-        //    }
-        //    else
-        //    {
-        //        stencilParams.enabled = false;
-        //        renderSystem->setStencilBufferParams(0, stencilParams);
-        //    }
-        //}
+            if (cmd.clipMaskOp == ClipMaskOperation::Set)
+            {
+                stencilParams.stencilFront.compareOp     = Ogre::CMPF_ALWAYS_PASS;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_REPLACE;
+                stencilParams.stencilBack                = stencilParams.stencilFront;
+                renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
+            }
+            else if (cmd.clipMaskOp == ClipMaskOperation::SetInverse)
+            {
+                stencilParams.stencilFront.compareOp     = Ogre::CMPF_NOT_EQUAL;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
+                stencilParams.stencilBack                = stencilParams.stencilFront;
+                renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
+            }
+            else if (cmd.clipMaskOp == ClipMaskOperation::Intersect)
+            {
+                stencilParams.stencilFront.compareOp     = Ogre::CMPF_EQUAL;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_INCREMENT;
+                stencilParams.stencilBack                = stencilParams.stencilFront;
+                renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
+            }
+        }
+        else if (cmd.type == DrawCommand::Type::Geometry)
+        {
+            if (cmd.clipMaskOp != ClipMaskOperation::None)
+            {
+                stencilParams.enabled                    = true;
+                stencilParams.stencilFront.stencilPassOp = Ogre::SOP_KEEP;
+                stencilParams.stencilFront.compareOp     = Ogre::CMPF_EQUAL;
+                stencilParams.stencilBack                = stencilParams.stencilFront;
+                renderSystem->setStencilBufferParams(cmd.stencilValue, stencilParams);
+            }
+            else
+                renderSystem->setStencilBufferParams(0, stencilParams);
+        }
 
         if (cmd.textureId)
         {
@@ -850,14 +858,18 @@ void RenderInterface::RenderToClipMask(
     Rml::CompiledGeometryHandle geometry,
     Rml::Vector2f translation)
 {
-    if (operation == Rml::ClipMaskOperation::Set || operation == Rml::ClipMaskOperation::SetInverse)
+    if (operation == Rml::ClipMaskOperation::Set)
     {
-        m_stencilBaseValue += 2;
-        m_stencilRefValue = m_stencilBaseValue + 1;
+        m_stencilRefValue++;
+    }
+    else if (operation == Rml::ClipMaskOperation::SetInverse)
+    {
+        //m_stencilBaseValue += 1;
+        //m_stencilRefValue = m_stencilBaseValue + 1;
     }
     else if (operation == Rml::ClipMaskOperation::Intersect)
     {
-        m_stencilRefValue += 1;
+        //m_stencilRefValue += 1;
     }
     m_clipMaskOpRef = ClipMaskOperation(operation);
 
