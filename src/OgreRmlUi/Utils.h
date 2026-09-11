@@ -19,7 +19,7 @@ __forceinline Ogre::Vector4 toOgre(Rml::ColourbPremultiplied c)
 
 __forceinline Ogre::Vector2 toOgre(Rml::Vector2f v)
 {
-	return Ogre::Vector2{v.x, v.y};
+	return Ogre::Vector2{ v.x, v.y };
 }
 
 }

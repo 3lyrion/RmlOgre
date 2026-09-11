@@ -2,8 +2,8 @@
 
 #include <OgreRmlUi/Utils.h>
 
-#include "Vao/OgreVaoManager.h"
-#include "Vao/OgreVertexArrayObject.h"
+#include <Vao/OgreVaoManager.h>
+#include <Vao/OgreVertexArrayObject.h>
 
 using namespace OgreRmlUi;
 

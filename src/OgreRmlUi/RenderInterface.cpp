@@ -4,31 +4,31 @@
 #include <OgreRmlUi/Filters.h>
 #include <OgreRmlUi/Shaders.h>
 
-#include "CommandBuffer/OgreCbDrawCall.h"
-#include "CommandBuffer/OgreCbPipelineStateObject.h"
-#include "CommandBuffer/OgreCbShaderBuffer.h"
-#include "CommandBuffer/OgreCommandBuffer.h"
-#include "OgreCamera.h"
-#include "OgreHighLevelGpuProgramManager.h"
-#include "OgreHlms.h"
-#include "OgreHlmsUnlit.h"
-#include "OgreHlmsManager.h"
-#include "OgreHlmsUnlitDatablock.h"
-#include "OgreMaterialManager.h"
-#include "OgrePass.h"
-#include "OgreRenderQueue.h"
-#include "OgreRenderSystem.h"
-#include "OgreRoot.h"
-#include "OgreSceneManager.h"
-#include "OgreTechnique.h"
-#include "OgreTextureBox.h"
-#include "OgreTextureGpu.h"
-#include "OgreTextureGpuManager.h"
-#include "OgreUnifiedHighLevelGpuProgram.h"
-#include "Vao/OgreIndirectBufferPacked.h"
-#include "Vao/OgreVaoManager.h"
-#include "Vao/OgreVertexArrayObject.h"
-#include "Compositor/OgreTextureDefinition.h"
+#include <CommandBuffer/OgreCbDrawCall.h>
+#include <CommandBuffer/OgreCbPipelineStateObject.h>
+#include <CommandBuffer/OgreCbShaderBuffer.h>
+#include <CommandBuffer/OgreCommandBuffer.h>
+#include <OgreCamera.h>
+#include <OgreHighLevelGpuProgramManager.h>
+#include <OgreHlms.h>
+#include <OgreHlmsUnlit.h>
+#include <OgreHlmsManager.h>
+#include <OgreHlmsUnlitDatablock.h>
+#include <OgreMaterialManager.h>
+#include <OgrePass.h>
+#include <OgreRenderQueue.h>
+#include <OgreRenderSystem.h>
+#include <OgreRoot.h>
+#include <OgreSceneManager.h>
+#include <OgreTechnique.h>
+#include <OgreTextureBox.h>
+#include <OgreTextureGpu.h>
+#include <OgreTextureGpuManager.h>
+#include <OgreUnifiedHighLevelGpuProgram.h>
+#include <Vao/OgreIndirectBufferPacked.h>
+#include <Vao/OgreVaoManager.h>
+#include <Vao/OgreVertexArrayObject.h>
+#include <Compositor/OgreTextureDefinition.h>
 
 using namespace OgreRmlUi;
 
@@ -72,6 +72,8 @@ RenderInterface::RenderInterface()
 
 RenderInterface::~RenderInterface()
 {
+    clearTemp();
+
     if( m_indirectBuffer )
     {
         if (m_indirectBuffer->getMappingState() != Ogre::MS_UNMAPPED)
@@ -81,16 +83,6 @@ RenderInterface::~RenderInterface()
     }
 
     m_commandBuffer->clear();
-
-    for (auto& cmd : m_drawCommands)
-    {
-        if (!cmd.renderable)
-            continue;
-
-        auto& renderable = *cmd.renderable;
-        renderable.destroyBuffers(VAOManager);
-        m_memoryManager.destroy(renderable);
-    }
 
     if (m_sceneManager)
     {
@@ -119,6 +111,7 @@ void RenderInterface::OnResourcesLoaded()
     AddShaderMaker("radial-gradient", std::make_unique<RadialGradientMaker>());
     AddShaderMaker("conic-gradient",  std::make_unique<ConicGradientMaker >());
 
+    /*
     AddFilterMaker("blur",        std::make_unique<BlurFilterMaker      >());
     AddFilterMaker("drop-shadow", std::make_unique<DropShadowFilterMaker>());
     AddFilterMaker("opacity",     std::make_unique<OpacityFilterMaker   >());
@@ -129,6 +122,52 @@ void RenderInterface::OnResourcesLoaded()
     AddFilterMaker("sepia",       std::make_unique<SepiaFilterMaker     >());
     AddFilterMaker("hue-rotate",  std::make_unique<HueRotateFilterMaker >());
     AddFilterMaker("saturate",    std::make_unique<SaturateFilterMaker  >());
+    */
+}
+
+void RenderInterface::clearTemp()
+{
+    for (auto* renderable : m_garbageRenderables)
+    {
+        renderable->destroyBuffers(VAOManager);
+        m_memoryManager.destroy(*renderable);
+    }
+    m_garbageRenderables.clear();
+
+    for (auto id : m_garbageTextureIds)
+    {
+        auto entry = m_textures.find(id);
+        assert(entry != m_textures.end());
+        if (entry->second)
+        {
+            TextureManager->destroyTexture(entry->second);
+        }
+        m_textures.erase(entry);
+    }
+    m_garbageTextureIds.clear();
+
+    for (auto id : m_garbageFilterIds)
+    {
+        auto entry = m_filters.find(id);
+        if (entry == m_filters.end())
+            return;
+
+        auto& filter = *entry->second;
+        filter.release(*this);
+        m_filters.erase(entry);
+    }
+    m_garbageFilterIds.clear();
+
+    m_drawCommands.clear();
+    m_scissorRef        = { 0.0f, 0.0f, 1.0f, 1.0f };
+    m_scissorEnabled    = false;
+    m_clipMaskEnabled   = false;
+    m_clipMaskOpRef     = ClipMaskOperation::None;
+    m_stencilRefValue   = 0;
+    m_transformRefIndex = UINT16_MAX;
+    m_transforms.clear();
+    m_layerIndexRef     = -1;
+    m_layerIndexMax     = -1;
 }
 
 void RenderInterface::createBaseMaterial()
@@ -136,7 +175,7 @@ void RenderInterface::createBaseMaterial()
     m_baseMaterial = Ogre::MaterialManager::getSingleton().create("!!OgreRmlUi_BaseMat",
         Ogre::ResourceGroupManager::INTERNAL_RESOURCE_GROUP_NAME);
 
-    Ogre::Pass *pass = m_baseMaterial->getTechnique(0)->getPass(0);
+    auto* pass = m_baseMaterial->getTechnique(0)->getPass(0);
     pass->setVertexProgram("Rml/Element_vs");
     pass->setFragmentProgram("Rml/Base_ps");
 
@@ -173,7 +212,7 @@ void RenderInterface::createMaskMaterial()
     pass->setBlendblock(maskBlendblock);
 }
 
-Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, uint vpWidth, uint vpHeight, Ogre::TextureGpu& mainRTT)
+Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, uint vpWidth, uint vpHeight)
 {
     auto& texture = m_textures[textureId];
     if (texture)
@@ -189,14 +228,13 @@ Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, uint vp
     texture->setNumMipmaps(1);
     texture->setResolution(vpWidth, vpHeight);
     texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
-    //texture->setSampleDescription(mainRTT.getSampleDescription());
     texture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
     texture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
     return texture;
 }
 
-Ogre::Matrix4 RenderInterface::getProjectionMatrix( Ogre::RenderSystem* rs, const bool bRequiresTextureFlipping,
-                                           const Ogre::Camera* currentCamera, float vpWidth, float vpHeight ) const
+Ogre::Matrix4 RenderInterface::getProjectionMatrix(Ogre::RenderSystem* rs, bool bRequiresTextureFlipping,
+                                                   Ogre::Camera const* currentCamera, float vpWidth, float vpHeight) const
 {
     Ogre::Matrix4 projectionMatrix{ 2.0f / vpWidth,  0.0f           ,  0.0f, -1.0f,
                                     0.0f          , -2.0f / vpHeight,  0.0f,  1.0f,
@@ -219,7 +257,7 @@ Ogre::Matrix4 RenderInterface::getProjectionMatrix( Ogre::RenderSystem* rs, cons
     return projectionMatrix;
 }
 
-void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera, Ogre::RenderTargetViewDef const* rtv)
+void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassDesc, Ogre::TextureGpu* anyTargetTexture, Ogre::Camera const* currentCamera)
 {
     auto*      renderSystem            = m_sceneManager->getDestinationRenderSystem();
     const bool supportsIndirectBuffers = VAOManager->supportsIndirectBuffers();
@@ -375,7 +413,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 layerDepthTexture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
             }
 
-            auto* layerTex  = acquireLayerTexture(cmd.textureId, uint32(vpWidth), uint32(vpHeight), *renderPassDesc->mColour->texture);
+            auto* layerTex  = acquireLayerTexture(cmd.textureId, uint(vpWidth), uint(vpHeight));
             auto* layerDesc = renderSystem->createRenderPassDescriptor();
             auto& colourBuf = layerDesc->mColour[0];
             colourBuf.texture     = layerTex;
@@ -390,7 +428,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             layerDesc->mStencil.clearStencil = 0;
             layerDesc->entriesModified(Ogre::RenderPassDescriptor::All);
 
-            renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &viewportSize, 1, false, false);
+            renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &viewportSize, 1, false, false); // viewportSize according to Rml::RenderInterface_GL3
             renderSystem->executeRenderPassDescriptorDelayedActions();
             m_renderStack.push_back({ layerDesc, layerTex, cmd.textureId });
             currentPassDesc = layerDesc;
@@ -589,7 +627,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
         // Draw commands
         Ogre::QueuedRenderable queuedRenderable(0, renderable, m_dummyMovableObject);
-        auto* hlmsCache = hlms->getMaterial( &c_dummyCache, passCache, queuedRenderable, false, nullptr );
+        auto* hlmsCache = hlms->getMaterial(&c_dummyCache, passCache, queuedRenderable, false, nullptr);
         auto* psoCmd    = m_commandBuffer->addCommand<Ogre::CbPipelineStateObject>();
         *psoCmd = Ogre::CbPipelineStateObject(&hlmsCache->pso);
         hlms->fillBuffersForV2(hlmsCache, queuedRenderable, false, 0u, m_commandBuffer);
@@ -597,8 +635,8 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         *m_commandBuffer->addCommand<Ogre::CbVao           >() = Ogre::CbVao(vao);
         *m_commandBuffer->addCommand<Ogre::CbIndirectBuffer>() = Ogre::CbIndirectBuffer(m_indirectBuffer);
 
-        void* offset = reinterpret_cast<void*>(m_indirectBuffer->_getFinalBufferStart() + sizeof(Ogre::CbDrawIndexed) * indirectIdx);
-        Ogre::CbDrawCallIndexed *drawCall = m_commandBuffer->addCommand<Ogre::CbDrawCallIndexed>();
+        void* offset   = reinterpret_cast<void*>(m_indirectBuffer->_getFinalBufferStart() + sizeof(Ogre::CbDrawIndexed) * indirectIdx);
+        auto* drawCall = m_commandBuffer->addCommand<Ogre::CbDrawCallIndexed>();
         *drawCall = Ogre::CbDrawCallIndexed( baseInstanceAndIndirectBuffers, vao, offset );
         drawCall->numDraws = 1;
 
@@ -702,44 +740,7 @@ void RenderInterface::setSceneManager(Ogre::SceneManager* sceneManager)
 
 void RenderInterface::BeginFrame()
 {
-    for (auto* renderable : m_garbageRenderables)
-    {
-        renderable->destroyBuffers(VAOManager);
-        m_memoryManager.destroy(*renderable);
-    }
-    m_garbageRenderables.clear();
-
-    for (auto id : m_garbageTextureIds)
-    {
-        auto entry = m_textures.find(id);
-        assert(entry != m_textures.end());
-        if (entry->second)
-        {
-            TextureManager->destroyTexture(entry->second);
-        }
-        m_textures.erase(entry);
-    }
-    m_garbageTextureIds.clear();
-
-    for (auto id : m_garbageFilterIds)
-    {
-        auto entry = m_filters.find(id);
-        if (entry == m_filters.end())
-            return;
-
-        auto& filter = *entry->second;
-        filter.release(*this);
-        m_filters.erase(entry);
-    }
-    m_garbageFilterIds.clear();
-
-    m_drawCommands.clear();
-    m_scissorRef = { 0.0f, 0.0f, 1.0f, 1.0f };
-    m_scissorEnabled = false;
-    m_clipMaskEnabled = false;
-    m_stencilRefValue = 0;
-    m_transformRefIndex = UINT16_MAX;
-    m_transforms.clear();
+    clearTemp();
 }
 
  void RenderInterface::EndFrame()
@@ -811,19 +812,22 @@ void RenderInterface::SetTransform(const Rml::Matrix4f* transform)
     m_transformRefIndex = uint16(m_transforms.size() - 1);
 }
 
-Rml::TextureHandle RenderInterface::LoadTexture(
-    Rml::Vector2i& texture_dimensions,
-    const Rml::String& source
-)
+Rml::TextureHandle RenderInterface::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
 {
-    return 0;
+    auto* texture = TextureManager->findTextureNoThrow(source);
+    if (!texture)
+        return 0;
+
+    if (texture->getWidth() == texture_dimensions.x && texture->getHeight() == texture_dimensions.y)
+        return 
+
+    texture->
 }
 
 Rml::TextureHandle RenderInterface::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions)
 {  
-    Ogre::String texName = "!!OgreRmlUi_Texture_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>());
-    Ogre::uint8* data = reinterpret_cast<Ogre::uint8*>(
-        OGRE_MALLOC_SIMD(source.size(), Ogre::MEMCATEGORY_GENERAL));
+    auto  texName = "!!OgreRmlUi_Texture_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>());
+    auto* data    = reinterpret_cast<Ogre::uint8*>(OGRE_MALLOC_SIMD(source.size(), Ogre::MEMCATEGORY_GENERAL));
     std::copy(source.begin(), source.end(), data);
 
     auto* image = OGRE_NEW Ogre::Image2;
@@ -841,7 +845,7 @@ Rml::TextureHandle RenderInterface::GenerateTexture(Rml::Span<const Rml::byte> s
         Ogre::TextureTypes::Type2D,
         Ogre::BLANKSTRING);
     texture->setNumMipmaps(1);
-    texture->setResolution(uint32(source_dimensions.x), uint32(source_dimensions.y));
+    texture->setResolution(uint(source_dimensions.x), uint(source_dimensions.y));
     texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
     texture->scheduleTransitionTo(Ogre::GpuResidency::Resident, image);
 
