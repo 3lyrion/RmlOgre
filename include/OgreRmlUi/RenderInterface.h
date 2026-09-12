@@ -39,7 +39,7 @@ struct DrawCommand
     };
 
     Renderable*        renderable;
-    size_t             textureId;
+    uint               textureId;
     Ogre::Vector4      scissor;
     Rml::Vector2f      translation;
     Type               type;
@@ -145,7 +145,7 @@ private:
     {
         Ogre::RenderPassDescriptor* passDesc;
         Ogre::TextureGpu*           rtt;
-        size_t                      textureId;
+        uint                        textureId;
     };
 
     Vector<DrawCommand>  m_drawCommands;
@@ -159,26 +159,29 @@ private:
     int16                m_layerIndexMax     = -1;
 
     Ogre::MaterialPtr m_baseMaterial;
+    Ogre::MaterialPtr m_baseMaterialMasked;
     Ogre::MaterialPtr m_blankMaterial;
-    Ogre::MaterialPtr m_maskMaterial;
+    Ogre::MaterialPtr m_blankMaterialMasked;
+    Ogre::MaterialPtr m_maskMaterialSet;
+    Ogre::MaterialPtr m_maskMaterialIntersect;
 
-    size_t                          m_textureIdCounter = 0;
-    UMap<size_t, Ogre::TextureGpu*> m_textures;
+    uint                          m_textureIdCounter = 1;
+    UMap<uint, Ogre::TextureGpu*> m_textures;
 
-    Vector<Ogre::Matrix4>   m_transforms;
-    Vector<RenderContext>   m_renderStack;
-    Vector<Vector<size_t>>  m_filterSets;
+    Vector<Ogre::Matrix4> m_transforms;
+    Vector<RenderContext> m_renderStack;
+    Vector<Vector<uint>>  m_filterSets;
 
     UMap<size_t, UPtr<ShaderMaker>> m_shaderMakers;
-    UMap<size_t, Ogre::MaterialPtr> m_shaderMaterials;
-    size_t                          m_shaderFilterIdCounter = 0;
+    UMap<uint, Ogre::MaterialPtr>   m_shaderMaterials;
+    uint                            m_shaderFilterIdCounter = 1;
 
     UMap<size_t, UPtr<FilterMaker>> m_filterMakers;
-    UMap<size_t, UPtr<Filter>>      m_filters;
+    UMap<uint, UPtr<Filter>>        m_filters;
 
     Vector<Renderable*> m_garbageRenderables;
-    Vector<size_t>      m_garbageTextureIds;
-    FlatSet<size_t>     m_garbageFilterIds;
+    Vector<uint>        m_garbageTextureIds;
+    FlatSet<uint>       m_garbageFilterIds;
 
     Ogre::IndirectBufferPacked* m_indirectBuffer{};
     Ogre::CommandBuffer*        m_commandBuffer{};
@@ -197,7 +200,7 @@ private:
     void createBaseMaterial();
     void createMaskMaterial();
 
-    Ogre::TextureGpu* acquireLayerTexture(size_t textureId, uint vpWidth, uint vpHeight);
+    Ogre::TextureGpu* acquireLayerTexture(uint textureId, uint vpWidth, uint vpHeight);
 
     Ogre::Matrix4 getProjectionMatrix(Ogre::RenderSystem* rs, bool bRequiresTextureFlipping,
                                       Ogre::Camera const* currentCamera, float vpWidth, float vpHeight) const;

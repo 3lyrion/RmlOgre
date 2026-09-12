@@ -24,6 +24,7 @@
 #include <OgreTextureBox.h>
 #include <OgreTextureGpu.h>
 #include <OgreTextureGpuManager.h>
+#include <OgreTextureFilters.h>
 #include <OgreUnifiedHighLevelGpuProgram.h>
 #include <Vao/OgreIndirectBufferPacked.h>
 #include <Vao/OgreVaoManager.h>
@@ -184,6 +185,8 @@ void RenderInterface::createBaseMaterial()
     pass->setMacroblock(m_macroblock);
 
     pass->createTextureUnitState();
+
+    m_baseMaterialMasked = m_baseMaterial->clone("!!OgreRmlUi_BaseMatMasked");
 }
 
 void RenderInterface::createBlankMaterial()
@@ -198,21 +201,25 @@ void RenderInterface::createBlankMaterial()
     pass->setSamplerblock(m_samplerblock);
     pass->setBlendblock(m_blendblock);
     pass->setMacroblock(m_macroblock);
+
+    m_blankMaterialMasked = m_blankMaterial->clone("!!OgreRmlUi_BlankMatMasked");
 }
 
 void RenderInterface::createMaskMaterial()
 {
     assert(m_blankMaterial);
-    m_maskMaterial = m_blankMaterial->clone("!!OgreRmlUi_MaskMat");
+    m_maskMaterialSet = m_blankMaterial->clone("!!OgreRmlUi_MaskMatSet");
 
     Ogre::HlmsBlendblock maskBlendblock = m_blendblock;
     maskBlendblock.mBlendChannelMask = 0;
 
-    auto* pass = m_maskMaterial->getTechnique(0)->getPass(0);
+    auto* pass = m_maskMaterialSet->getTechnique(0)->getPass(0);
     pass->setBlendblock(maskBlendblock);
+
+    m_maskMaterialIntersect = m_maskMaterialSet->clone("!!OgreRmlUi_MaskMatIntersect");
 }
 
-Ogre::TextureGpu* RenderInterface::acquireLayerTexture(size_t textureId, uint vpWidth, uint vpHeight)
+Ogre::TextureGpu* RenderInterface::acquireLayerTexture(uint textureId, uint vpWidth, uint vpHeight)
 {
     auto& texture = m_textures[textureId];
     if (texture)
@@ -353,6 +360,22 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
 
     Ogre::RenderPassDescriptor* currentPassDesc   = nullptr;
     Ogre::TextureGpu*           layerDepthTexture = nullptr;
+    //if (!layerDepthTexture)
+    //{
+    //    layerDepthTexture = TextureManager->createTexture("!!OgreRmlUi_LayerDepthTex_" + Ogre::StringConverter::toString(Ogre::Id::generateNewId<Ogre::TextureGpu>()),
+    //        Ogre::GpuPageOutStrategy::Discard,
+    //        Ogre::TextureFlags::RenderToTexture,
+    //        Ogre::TextureTypes::Type2D);
+    //    layerDepthTexture->setNumMipmaps(1);
+    //    layerDepthTexture->setResolution((uint)vpWidth, (uint)vpHeight);
+    //    layerDepthTexture->setPixelFormat(Ogre::PixelFormatGpu::PFG_D32_FLOAT_S8X24_UINT);
+    //    layerDepthTexture->_transitionTo(Ogre::GpuResidency::Resident, nullptr);
+    //    layerDepthTexture->_setNextResidencyStatus(Ogre::GpuResidency::Resident);
+    //}
+
+    //renderPassDesc->mDepth.texture = layerDepthTexture;
+    //renderPassDesc->mDepth.loadAction = Ogre::LoadAction::Clear;
+    //renderPassDesc->mDepth.storeAction = Ogre::StoreAction::Store;
 
     size_t indirectIdx = 0;
     for (size_t i = 0; i < numNeededDraws; i++)
@@ -426,7 +449,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
             layerDesc->mStencil.loadAction  = Ogre::LoadAction::Clear;
             layerDesc->mStencil.storeAction = Ogre::StoreAction::Store;
             layerDesc->mStencil.clearStencil = 0;
-            layerDesc->entriesModified(Ogre::RenderPassDescriptor::All);
 
             renderSystem->beginRenderPassDescriptor(layerDesc, layerTex, 0, &viewportSize, &viewportSize, 1, false, false); // viewportSize according to Rml::RenderInterface_GL3
             renderSystem->executeRenderPassDescriptorDelayedActions();
@@ -544,14 +566,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
                 layer = &m_renderStack.back();
 
             if (currentPassDesc)
-            {
-                int flags = Ogre::RenderPassDescriptor::Colour;
-                if (lastClipMaskOp != ClipMaskOperation::None)
-                {
-                    flags |= Ogre::RenderPassDescriptor::Stencil;
-                }
-                currentPassDesc->entriesModified(flags);
-            }
+                currentPassDesc->entriesModified(Ogre::RenderPassDescriptor::All);
 
             lastScissors       = scissors;
             lastScissorEnabled = cmd.scissorEnabled;
@@ -630,7 +645,7 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         auto* hlmsCache = hlms->getMaterial(&c_dummyCache, passCache, queuedRenderable, false, nullptr);
         auto* psoCmd    = m_commandBuffer->addCommand<Ogre::CbPipelineStateObject>();
         *psoCmd = Ogre::CbPipelineStateObject(&hlmsCache->pso);
-        hlms->fillBuffersForV2(hlmsCache, queuedRenderable, false, 0u, m_commandBuffer);
+        hlms->fillBuffersForV2(hlmsCache, queuedRenderable, false, 0, m_commandBuffer);
 
         *m_commandBuffer->addCommand<Ogre::CbVao           >() = Ogre::CbVao(vao);
         *m_commandBuffer->addCommand<Ogre::CbIndirectBuffer>() = Ogre::CbIndirectBuffer(m_indirectBuffer);
@@ -652,9 +667,6 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         indirectIdx++;
     }
 
-    if (layerDepthTexture)
-        TextureManager->destroyTexture(layerDepthTexture);
-
     if (currentPassDesc)
     {
         assert(currentPassDesc == renderPassDesc);
@@ -668,6 +680,9 @@ void RenderInterface::drawIntoCompositor(Ogre::RenderPassDescriptor* renderPassD
         renderSystem->executeRenderPassDescriptorDelayedActions();
         renderSystem->endRenderPassDescriptor();
     }
+
+    if (layerDepthTexture)
+        TextureManager->destroyTexture(layerDepthTexture);
 
     renderSystem->_addMetrics(stats);
 }
@@ -771,7 +786,7 @@ void RenderInterface::RenderGeometry(
 {
     auto& cmd = m_drawCommands.emplace_back();
     cmd.renderable      = reinterpret_cast<Renderable*>(geometry);
-    cmd.textureId       = texture;
+    cmd.textureId       = (uint)texture;
     cmd.scissor         = m_scissorRef;
     cmd.scissorEnabled  = m_scissorEnabled;
     cmd.type            = DrawCommand::Type::Geometry;
@@ -787,7 +802,13 @@ void RenderInterface::RenderGeometry(
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    cmd.renderable->setMaterial(texture ? m_baseMaterial : m_blankMaterial);
+    //cmd.renderable->setMaterial(texture ? m_baseMaterial : m_blankMaterial);
+    bool hasMask = m_clipMaskEnabled && (m_clipMaskOpRef != ClipMaskOperation::None);
+    
+    if (texture)
+        cmd.renderable->setMaterial(hasMask ? m_baseMaterialMasked : m_baseMaterial);
+    else
+        cmd.renderable->setMaterial(hasMask ? m_blankMaterialMasked : m_blankMaterial);
 }
 
 void RenderInterface::EnableScissorRegion(bool enable)
@@ -814,14 +835,19 @@ void RenderInterface::SetTransform(const Rml::Matrix4f* transform)
 
 Rml::TextureHandle RenderInterface::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
 {
-    auto* texture = TextureManager->findTextureNoThrow(source);
-    if (!texture)
-        return 0;
+    auto* texture = TextureManager->createTexture(source,
+                Ogre::GpuPageOutStrategy::Discard,
+                0,
+                Ogre::TextureTypes::Type2D,
+                Ogre::ResourceGroupManager::AUTODETECT_RESOURCE_GROUP_NAME,
+                Ogre::TextureFilter::TypePremultiplyAlpha);
+    texture->scheduleTransitionTo(Ogre::GpuResidency::Resident);
 
-    if (texture->getWidth() == texture_dimensions.x && texture->getHeight() == texture_dimensions.y)
-        return 
+    texture->waitForMetadata();
+    texture_dimensions = Rml::Vector2i{ (int)texture->getWidth(), (int)texture->getHeight() };
 
-    texture->
+    m_textures[m_textureIdCounter] = texture;
+    return m_textureIdCounter++;
 }
 
 Rml::TextureHandle RenderInterface::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions)
@@ -849,13 +875,13 @@ Rml::TextureHandle RenderInterface::GenerateTexture(Rml::Span<const Rml::byte> s
     texture->setPixelFormat(Ogre::PixelFormatGpu::PFG_RGBA8_UNORM);
     texture->scheduleTransitionTo(Ogre::GpuResidency::Resident, image);
 
-    m_textures[++m_textureIdCounter] = texture;
-    return m_textureIdCounter;
+    m_textures[m_textureIdCounter] = texture;
+    return m_textureIdCounter++;
 }
 
 void RenderInterface::ReleaseTexture(Rml::TextureHandle texture_handle)
 {
-    m_garbageTextureIds.push_back(texture_handle);
+    m_garbageTextureIds.push_back((uint)texture_handle);
 }
 
 void RenderInterface::EnableClipMask(bool enable)
@@ -882,14 +908,14 @@ void RenderInterface::RenderToClipMask(
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    cmd.renderable->setMaterial(m_maskMaterial);
+    cmd.renderable->setMaterial(m_clipMaskOpRef != ClipMaskOperation::Intersect ? m_maskMaterialSet : m_maskMaterialIntersect);
 }
 
 Rml::LayerHandle RenderInterface::PushLayer()
 {
     auto& cmd = m_drawCommands.emplace_back();
     cmd.type           = DrawCommand::Type::PushLayer;
-    cmd.textureId      = ++m_textureIdCounter;
+    cmd.textureId      = m_textureIdCounter++;
     cmd.scissor        = m_scissorRef;
     cmd.scissorEnabled = m_scissorEnabled;
 
@@ -915,7 +941,7 @@ void RenderInterface::CompositeLayers(
         auto& filterSet = m_filterSets.emplace_back();
         filterSet.reserve(filters.size());
         for (auto filter : filters)
-            filterSet.push_back(filter);
+            filterSet.push_back((uint)filter);
     }
     else
         cmd.filterSetIndex = UINT16_MAX;
@@ -940,7 +966,7 @@ Rml::TextureHandle RenderInterface::SaveLayerAsTexture()
     auto& cmd = m_drawCommands.emplace_back();
     cmd.type           = DrawCommand::Type::SaveLayerAsTexture;
     cmd.destLayerIndex = m_layerIndexRef;
-    cmd.textureId      = ++m_textureIdCounter;
+    cmd.textureId      = m_textureIdCounter++;
     cmd.scissor        = m_scissorRef;
     cmd.scissorEnabled = m_scissorEnabled;
 
@@ -949,7 +975,7 @@ Rml::TextureHandle RenderInterface::SaveLayerAsTexture()
 
 Rml::CompiledFilterHandle RenderInterface::SaveLayerAsMaskImage()
 {
-    throw std::runtime_error("RenderInterface::SaveLayerAsMaskImage is not implemented yet");
+    throw std::runtime_error("OgreRmlUi: SaveLayerAsMaskImage is not implemented yet");
     return {};
 }
 
@@ -957,7 +983,7 @@ Rml::CompiledFilterHandle RenderInterface::CompileFilter(
     const Rml::String& name,
     const Rml::Dictionary& parameters)
 {
-    throw std::runtime_error("OgreRmlUi: RenderInterface::CompileFilter is not completed yet");
+    throw std::runtime_error("OgreRmlUi: CompileFilter is not completed yet");
 
     auto hash = StringHasher(name);
 
@@ -966,15 +992,15 @@ Rml::CompiledFilterHandle RenderInterface::CompileFilter(
         throw std::runtime_error("OgreRmlUi: FilterMaker with name '" + name + "' not found");
 
     auto& filterMaker = entry->second;
-    m_filters.emplace(++m_shaderFilterIdCounter, filterMaker->make(parameters));
-    return m_shaderFilterIdCounter;
+    m_filters.emplace(m_shaderFilterIdCounter, filterMaker->make(parameters));
+    return m_shaderFilterIdCounter++;
 }
 
 void RenderInterface::ReleaseFilter(Rml::CompiledFilterHandle filter)
 {
     throw std::runtime_error("OgreRmlUi: RenderInterface::ReleaseFilter is not completed yet");
 
-    m_garbageFilterIds.insert(filter);
+    m_garbageFilterIds.insert((uint)filter);
 }
 
 Rml::CompiledShaderHandle RenderInterface::CompileShader(
@@ -988,8 +1014,8 @@ Rml::CompiledShaderHandle RenderInterface::CompileShader(
         throw std::runtime_error("OgreRmlUi: ShaderMaker with name '" + name + "' not found");
 
     auto& shaderMaker = entry->second;
-    m_shaderMaterials.emplace(++m_shaderFilterIdCounter, shaderMaker->make(parameters));
-    return m_shaderFilterIdCounter;
+    m_shaderMaterials.emplace(m_shaderFilterIdCounter, shaderMaker->make(parameters));
+    return m_shaderFilterIdCounter++;
 }
 
 void RenderInterface::RenderShader(
@@ -1003,8 +1029,6 @@ void RenderInterface::RenderShader(
 
     if (!shader)
         throw std::runtime_error("OgreRmlUi: RenderShader called with null shader");
-
-    auto index = static_cast<uint16>(geometry) - 1;
 
     auto& cmd = m_drawCommands.emplace_back();
     cmd.renderable      = reinterpret_cast<Renderable*>(geometry);
@@ -1024,11 +1048,11 @@ void RenderInterface::RenderShader(
     cmd.translation     = translation;
     cmd.transformIndex  = m_transformRefIndex;
 
-    auto& mat = m_shaderMaterials.at(shader);
+    auto& mat = m_shaderMaterials.at(uint(shader));
     cmd.renderable->setMaterial(mat);
 }
 
 void RenderInterface::ReleaseShader(Rml::CompiledShaderHandle shader)
 {
-    m_shaderMaterials.erase(shader);
+    m_shaderMaterials.erase((uint)shader);
 }
